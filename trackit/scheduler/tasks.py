@@ -1,5 +1,5 @@
 """Celery task scheduler for snapshot and report jobs"""
-import logging
+import logging, os
 from datetime import datetime, timedelta
 from celery import shared_task
 from django.utils import timezone
@@ -215,7 +215,7 @@ def reminder_job():
                         logger.info(f"Created token for {assignee}: {token[:10]}...")
                         
                         # Build update link
-                        update_link = f"http://localhost:8000/update/{token}"
+                        update_link = f"{os.environ.get("UI_DOMAIN","http://localhost:8000")}/update/{token}"
                         
                         # Send ONE consolidated email with ALL CURRENT tickets
                         logger.info(f"Sending reminder email to {assignee} with {ticket_count} tickets")
