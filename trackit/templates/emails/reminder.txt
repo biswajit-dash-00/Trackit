@@ -1,0 +1,28 @@
+Subject: Daily Ticket Update Required - {{ filter_name }}
+
+Hi {{ assignee_name }},
+
+You have {{ ticket_count }} assigned ticket(s) in the {{ filter_name }} filter.
+Please provide updates on all of them before the deadline.
+
+Your Tickets:
+{% for ticket in tickets %}
+- {{ ticket.ticket_id }}
+{% endfor %}
+
+⏰ DEADLINE: Submit updates within {{ token_validity_hours }} hour{{ token_validity_hours|pluralize }}
+The secure link below will expire after that time.
+
+📝 SUBMIT UPDATES HERE:
+{{ update_link }}
+
+Please provide for each ticket:
+1. Completion ETA: When do you expect to complete it?
+2. Current Status: What progress have you made?
+3. Blockers: Are there any obstacles?
+
+---
+
+This is an automated message from TrackIt - Jira Accountability System
+Do not share this link - it's unique and secure to your account
+Contact your administrator if you have questions

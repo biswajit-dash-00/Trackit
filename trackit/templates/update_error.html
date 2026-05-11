@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Update Error - TrackIt{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 60px 20px;">
+    <div style="font-size: 60px; margin-bottom: 20px;">❌</div>
+    <h1 style="color: #dc3545; margin-bottom: 10px;">Link Invalid or Expired</h1>
+    <p style="color: #666; font-size: 16px; margin-bottom: 30px;">
+        {{ error }}
+    </p>
+    <p style="color: #999; margin-bottom: 20px;">
+        The update link in your email may have expired (valid for {{ token_validity_hours }} hour{{ token_validity_hours|pluralize }}) or has already been used.
+    </p>
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 30px; text-align: left;">
+        <strong>What to do:</strong>
+        <ul style="margin: 10px 0 0 20px;">
+            <li>Check your email for a new reminder with an updated link</li>
+            <li>The system sends reminders at scheduled times</li>
+            <li>Contact your admin if you need help</li>
+        </ul>
+    </div>
+    <a href="/" class="btn btn-primary">← Back to Home</a>
+</div>
+{% endblock %}

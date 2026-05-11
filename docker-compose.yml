@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: trackit-postgres
+  #   environment:
+  #     POSTGRES_DB: ${DB_NAME:-trackit}
+  #     POSTGRES_USER: ${DB_USER:-postgres}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+  #   ports:
+  #     - "${DB_PORT:-5432}:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - trackit-network
+
+  # Redis Cache & Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: trackit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - trackit-network
+
+  # Django Web Application
+  trackit:
+    build: .
+    container_name: trackit
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    # entrypoint: tail -f /dev/null
+    volumes:
+      - ./:/app/
+    networks:
+      - trackit-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  trackit-network:
+    driver: bridge

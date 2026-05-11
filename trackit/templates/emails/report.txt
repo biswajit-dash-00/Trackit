@@ -1,0 +1,19 @@
+Daily Jira Report - {{ filter_name }} - {{ report_date }}
+
+Dear Admin,
+
+Your daily Jira report for {{ filter_name }} is ready.
+
+FULL REPORT: The complete markdown report is attached to this email.
+
+The report includes:
+- Summary metrics and compliance statistics
+- Top ticket loads by assignee
+- Assignees who didn't submit updates
+- New tickets added today
+- Status changes since yesterday
+- Resolved tickets and trends
+
+---
+
+This is an automated message from TrackIt - Jira Accountability System

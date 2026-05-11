@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Admin Dashboard - TrackIt{% endblock %}
+
+{% block content %}
+<h1>📊 Admin Dashboard</h1>
+<p style="color: #666; margin-top: 10px;">Manage your Jira filters and view analytics</p>
+
+<div class="stats">
+    <div class="stat-box">
+        <div class="stat-label">Active Filters</div>
+        <div class="stat-value">{{ total_filters }}</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-label">Total Snapshots</div>
+        <div class="stat-value">{{ total_snapshots }}</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-label">Total Updates</div>
+        <div class="stat-value">{{ total_updates }}</div>
+    </div>
+</div>
+
+<div style="margin-bottom: 30px;">
+    <a href="/api/v1/filters/" class="btn btn-primary">+ Create New Filter</a>
+</div>
+
+<h2>Your Filters</h2>
+
+{% if filters %}
+    <div style="display: grid; gap: 15px;">
+        {% for filter in filters %}
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 style="margin: 0; color: #333;">{{ filter.name }}</h3>
+                    <p style="color: #999; font-size: 13px; margin-top: 5px;">
+                        Jira Filter: {{ filter.jira_filter_id }} | 
+                        Snapshot: {{ filter.snapshot_time }} | 
+                        Report: {{ filter.report_time }}
+                    </p>
+                </div>
+                <div>
+                    <span class="badge {% if filter.active %}badge-success{% else %}badge-danger{% endif %}">
+                        {% if filter.active %}🟢 Active{% else %}🔴 Inactive{% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <table>
+                <tr>
+                    <td><strong>Admin Email:</strong> {{ filter.admin_email }}</td>
+                    <td><strong>Created:</strong> {{ filter.created_at|date:"M d, Y" }}</td>
+                </tr>
+            </table>
+            
+            <div style="display: flex; gap: 10px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+                <a href="/filters/{{ filter.id }}/" class="btn btn-secondary">View Details</a>
+                <a href="/api/v1/filters/{{ filter.id }}/" class="btn btn-secondary">Edit</a>
+                
+                {% with report=latest_reports|dict_lookup:filter.id %}
+                    {% if report %}
+                    <a href="/reports/{{ report.id }}/" class="btn btn-secondary">
+                        Latest Report
+                    </a>
+                    {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card" style="background: #e7f3ff; border-color: #0066cc; text-align: center; padding: 40px;">
+        <p style="color: #0066cc; font-size: 16px; margin: 0;">
+            <strong>No filters configured yet</strong><br>
+            <span style="font-size: 14px; color: #666;">
+                Create your first filter to start automating ticket updates
+            </span>
+        </p>
+    </div>
+{% endif %}
+
+<div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #667eea;">
+    <h3 style="margin-top: 0; color: #333;">How it works</h3>
+    <ol style="margin: 10px 0 0 20px; color: #666;">
+        <li>Create and configure Jira filters</li>
+        <li>System automatically takes snapshots at scheduled times</li>
+        <li>Assignees receive update requests via email</li>
+        <li>Updates are submitted securely via unique links</li>
+        <li>Analytics are computed and reports are generated</li>
+        <li>Reports are sent to admin automatically</li>
+    </ol>
+</div>
+
+<script>
+// Helper function for dict lookups in templates
+Object.defineProperty(Array.prototype, 'dict_lookup', {
+    value: function(key) {
+        // This is handled by Django template filters
+    }
+});
+</script>
+
+{% endblock %}

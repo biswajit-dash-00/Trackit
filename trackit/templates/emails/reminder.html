@@ -1,0 +1,139 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        
+        .subheader {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .ticket-list {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .ticket-item {
+            padding: 8px 0;
+            color: #333;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 600;
+            margin: 20px 0;
+        }
+        
+        .cta-button:hover {
+            background: #5568d3;
+        }
+        
+        .footer {
+            border-top: 1px solid #e0e0e0;
+            padding-top: 20px;
+            margin-top: 30px;
+            color: #999;
+            font-size: 12px;
+            text-align: center;
+        }
+        
+        .alert {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Daily Ticket Update Required</h1>
+            <p class="subheader">{{ filter_name }}</p>
+        </div>
+        
+        <p>Hi <strong>{{ assignee_name }}</strong>,</p>
+        
+        <p>
+            You have <strong>{{ ticket_count }} assigned ticket{{ ticket_count|pluralize }}</strong> in the 
+            <strong>{{ filter_name }}</strong> filter. Please provide updates on all of them before the deadline.
+        </p>
+        
+        <div class="ticket-list">
+            <strong>Your Tickets:</strong>
+            {% for ticket in tickets %}
+            <div class="ticket-item">• {{ ticket.ticket_id }}</div>
+            {% endfor %}
+        </div>
+        
+        <div class="alert">
+            <strong>⏰ Deadline:</strong> Updates should be submitted within {{ token_validity_hours }} hour{{ token_validity_hours|pluralize }}.
+            The secure link below will expire after that time.
+        </div>
+        
+        <p style="text-align: center;">
+            <a href="{{ update_link }}" class="cta-button">
+                📝 Submit Updates Now
+            </a>
+        </p>
+        
+        <p>
+            The link above will take you to a secure page where you can update all your tickets in one place. 
+            Please provide:
+        </p>
+        
+        <ul>
+            <li><strong>Completion ETA:</strong> When do you expect to complete each ticket?</li>
+            <li><strong>Current Status:</strong> What progress have you made?</li>
+            <li><strong>Blockers:</strong> Are there any obstacles preventing progress?</li>
+        </ul>
+        
+        <div class="footer">
+            <p>
+                This is an automated message from TrackIt - Jira Accountability System<br>
+                <strong>Do not share this link</strong> - it's unique and secure to your account<br>
+                If you have questions, contact your administrator
+            </p>
+        </div>
+    </div>
+</body>
+</html>

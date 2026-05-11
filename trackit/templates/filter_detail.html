@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}{% if filter %}{{ filter.name }}{% else %}Filter Details{% endif %} - TrackIt{% endblock %}
+
+{% block content %}
+
+{% if not filter %}
+<div class="card" style="background: #ffe0e0; border-color: #cc0000; border-left: 4px solid #cc0000;">
+    <h2 style="color: #cc0000; margin-top: 0;">⚠️ Filter Not Found</h2>
+    <p>The filter you're looking for doesn't exist or has been deleted.</p>
+    <a href="/dashboard/" class="btn btn-secondary">← Back to Dashboard</a>
+</div>
+{% else %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+    <div>
+        <h1>{{ filter.name }}</h1>
+        <p style="color: #666; margin-top: 5px;">
+            <strong>Jira Filter ID:</strong> 
+            <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">{{ filter.jira_filter_id }}</code>
+        </p>
+    </div>
+    <div>
+        <span class="badge {% if filter.active %}badge-success{% else %}badge-danger{% endif %}" style="font-size: 14px; padding: 8px 12px;">
+            {% if filter.active %}🟢 Active{% else %}🔴 Inactive{% endif %}
+        </span>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat-box">
+        <div class="stat-label">Total Tickets</div>
+        <div class="stat-value">{{ total_tickets|default:"0" }}</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-label">Unique Assignees</div>
+        <div class="stat-value">{{ unique_assignees|default:"0" }}</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-label">Reports Generated</div>
+        <div class="stat-value">{{ reports|length }}</div>
+    </div>
+</div>
+
+<div style="margin-bottom: 25px; display: flex; gap: 10px; flex-wrap: wrap;">
+    <a href="/dashboard/" class="btn btn-secondary">← Back to Dashboard</a>
+    <a href="/api/v1/filters/{{ filter.id }}/" class="btn btn-secondary">✏️ Edit Filter</a>
+    <a href="/api/v1/filters/{{ filter.id }}/snapshots/" class="btn btn-secondary">📷 View All Snapshots</a>
+</div>
+
+<div class="card">
+    <h3 style="margin-top: 0; color: #333;">🔧 Filter Configuration</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+        <tbody>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; width: 200px; background: #f9f9f9;"><strong>Filter Name</strong></td>
+                <td style="padding: 14px 12px;">{{ filter.name }}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Jira Filter ID</strong></td>
+                <td style="padding: 14px 12px;">
+                    <code style="background: #e8eef7; padding: 6px 10px; border-radius: 4px; color: #667eea; font-weight: 500;">
+                        {{ filter.jira_filter_id }}
+                    </code>
+                </td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Snapshot Time</strong></td>
+                <td style="padding: 14px 12px;">
+                    {% if filter.snapshot_time %}
+                        <strong style="color: #667eea; font-size: 15px;">
+                            ⏰ {{ filter.snapshot_time|date:"H:i" }} UTC
+                        </strong>
+                    {% else %}
+                        <em style="color: #999;">Default: 19:00 UTC (7 PM)</em>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Report Time</strong></td>
+                <td style="padding: 14px 12px;">
+                    {% if filter.report_time %}
+                        <strong style="color: #667eea; font-size: 15px;">
+                            ⏰ {{ filter.report_time|date:"H:i" }} UTC
+                        </strong>
+                    {% else %}
+                        <em style="color: #999;">Default: 21:00 UTC (9 PM)</em>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Admin Email</strong></td>
+                <td style="padding: 14px 12px;">
+                    {% if filter.admin_email %}
+                        <a href="mailto:{{ filter.admin_email }}" style="color: #667eea; text-decoration: none;">
+                            {{ filter.admin_email }}
+                        </a>
+                    {% else %}
+                        <em style="color: #999;">Not configured</em>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Status</strong></td>
+                <td style="padding: 14px 12px;">
+                    <span class="badge {% if filter.active %}badge-success{% else %}badge-danger{% endif %}">
+                        {% if filter.active %}🟢 Active{% else %}🔴 Inactive{% endif %}
+                    </span>
+                </td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Created</strong></td>
+                <td style="padding: 14px 12px;">{{ filter.created_at|date:"M d, Y \a\t H:i" }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Last Updated</strong></td>
+                <td style="padding: 14px 12px;">{{ filter.updated_at|date:"M d, Y \a\t H:i" }}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<h2 style="margin-top: 40px;">📊 Recent Reports</h2>
+
+{% if reports %}
+    <div style="display: grid; gap: 15px;">
+        {% for report in reports %}
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                <div>
+                    <strong style="font-size: 16px;">{{ report.report_date|date:"l, F j, Y" }}</strong>
+                    {% if report.sent_at %}
+                    <span class="badge badge-success" style="margin-left: 10px;">✓ Sent</span>
+                    {% else %}
+                    <span class="badge badge-danger" style="margin-left: 10px;">⏳ Pending</span>
+                    {% endif %}
+                </div>
+                <small style="color: #999;">
+                    {% if report.sent_at %}
+                    Sent: {{ report.sent_at|date:"M d, Y H:i" }}
+                    {% else %}
+                    Generated: {{ report.created_at|date:"M d, Y H:i" }}
+                    {% endif %}
+                </small>
+            </div>
+            <a href="/reports/{{ report.id }}/" class="btn btn-secondary" style="margin-top: 10px;">View Report →</a>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card" style="background: #e7f3ff; border-color: #0066cc; border-left: 4px solid #0066cc;">
+        <p style="color: #0066cc; margin: 0; font-weight: 500;">
+            📋 No reports generated yet
+        </p>
+        <p style="color: #666; margin: 10px 0 0 0; font-size: 14px;">
+            Reports are generated automatically at 
+            <strong>
+                {% if filter.report_time %}
+                    {{ filter.report_time|date:"H:i" }} UTC
+                {% else %}
+                    21:00 UTC (9 PM)
+                {% endif %}
+            </strong> daily.
+            Check back tomorrow or wait for the scheduled job to run.
+        </p>
+    </div>
+{% endif %}
+
+<h2 style="margin-top: 40px;">📸 Recent Snapshots</h2>
+
+{% if snapshots %}
+    <div class="card">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
+                    <th style="text-align: left; padding: 12px; color: #333; font-weight: 600;">Date</th>
+                    <th style="text-align: left; padding: 12px; color: #333; font-weight: 600;">Ticket ID</th>
+                    <th style="text-align: left; padding: 12px; color: #333; font-weight: 600;">Title</th>
+                    <th style="text-align: left; padding: 12px; color: #333; font-weight: 600;">Assignee</th>
+                    <th style="text-align: left; padding: 12px; color: #333; font-weight: 600;">Status</th>
+                    <th style="text-align: left; padding: 12px; color: #333; font-weight: 600;">Priority</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for snapshot in snapshots %}
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 10px 12px; color: #666;">{{ snapshot.snapshot_date|date:"M d, Y" }}</td>
+                    <td style="padding: 10px 12px;"><strong style="color: #667eea;">{{ snapshot.ticket_id }}</strong></td>
+                    <td style="padding: 10px 12px; color: #333;">{{ snapshot.title }}</td>
+                    <td style="padding: 10px 12px; color: #666;">{{ snapshot.assignee }}</td>
+                    <td style="padding: 10px 12px;">
+                        <span style="display: inline-block; background: #e8eef7; padding: 4px 8px; border-radius: 3px; font-size: 12px; color: #667eea;">
+                            {{ snapshot.status }}
+                        </span>
+                    </td>
+                    <td style="padding: 10px 12px;">
+                        <span style="display: inline-block; 
+                            background: {% if 'High' in snapshot.priority %}#ffebee{% elif 'Medium' in snapshot.priority %}#fff3e0{% else %}#e8f5e9{% endif %};
+                            color: {% if 'High' in snapshot.priority %}#d32f2f{% elif 'Medium' in snapshot.priority %}#f57c00{% else %}#388e3c{% endif %};
+                            padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 500;">
+                            {{ snapshot.priority }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="card" style="background: #e7f3ff; border-color: #0066cc; border-left: 4px solid #0066cc;">
+        <p style="color: #0066cc; margin: 0; font-weight: 500;">
+            📸 No snapshots available yet
+        </p>
+        <p style="color: #666; margin: 10px 0 0 0; font-size: 14px;">
+            Snapshots are created automatically at 
+            <strong>
+                {% if filter.snapshot_time %}
+                    {{ filter.snapshot_time|date:"H:i" }} UTC
+                {% else %}
+                    19:00 UTC (7 PM)
+                {% endif %}
+            </strong> daily.
+            Once the scheduled job runs, tickets from Jira will appear here.
+        </p>
+    </div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

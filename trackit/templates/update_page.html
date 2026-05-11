@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Submit Updates - TrackIt{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto; padding: 0 20px;">
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3 style="margin: 0; color: #333;">{{ filter.name }}</h3>
+            <p style="color: #999; font-size: 14px; margin-top: 5px;">
+                {{ assignee }} - {{ ticket_count }} tickets assigned
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="background: #e8f4f8; border-color: #0c5460;">
+    <p style="color: #0c5460; margin: 0;">
+        <strong>ℹ️ Instructions:</strong> Please update all your assigned tickets below. 
+        Your updates help us track progress and identify blockers. All fields are important.
+    </p>
+</div>
+
+<form method="POST" onsubmit="return submitUpdates(event);">
+    {% csrf_token %}
+    
+    <div style="margin-top: 30px;">
+        <h2>Your Assigned Tickets</h2>
+        
+        {% if tickets %}
+            <div id="tickets-container">
+                {% for ticket in tickets %}
+                <div class="ticket-card" data-ticket-id="{{ ticket.ticket_id }}">
+                    <div class="ticket-header">
+                        <div>
+                            <div class="ticket-id">{{ ticket.ticket_id }}</div>
+                            <div class="ticket-title">{{ ticket.title }}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div class="badge" style="
+                                {% if ticket.status == 'Done' %}
+                                    background: #d4edda; color: #155724;
+                                {% elif ticket.status == 'In Progress' %}
+                                    background: #fff3cd; color: #856404;
+                                {% else %}
+                                    background: #d1ecf1; color: #0c5460;
+                                {% endif %}
+                            ">
+                                {{ ticket.status }}
+                            </div>
+                            <div class="badge badge-info" style="margin-top: 5px;">
+                                {{ ticket.priority }}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="eta_{{ ticket.ticket_id }}">Completion ETA</label>
+                        <input 
+                            type="text" 
+                            id="eta_{{ ticket.ticket_id }}"
+                            name="eta_{{ ticket.ticket_id }}"
+                            placeholder="e.g., Tomorrow EOD, This week, Next sprint"
+                            required
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="update_{{ ticket.ticket_id }}">What's the current status?</label>
+                        <textarea 
+                            id="update_{{ ticket.ticket_id }}"
+                            name="update_{{ ticket.ticket_id }}"
+                            placeholder="Describe what you've accomplished, what's in progress, and what's pending..."
+                            required
+                        ></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="blockers_{{ ticket.ticket_id }}">Are you blocked by anything?</label>
+                        <textarea 
+                            id="blockers_{{ ticket.ticket_id }}"
+                            name="blockers_{{ ticket.ticket_id }}"
+                            placeholder="List any blockers, dependencies, or things we need to address..."
+                        ></textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div style="margin-top: 30px; display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">
+                    ✓ Submit All Updates
+                </button>
+                <button type="reset" class="btn btn-secondary" style="font-size: 16px; padding: 12px 30px;">
+                    ↻ Clear Form
+                </button>
+            </div>
+        {% else %}
+            <div class="error">
+                <strong>No tickets assigned</strong><br>
+                You don't have any tickets assigned in this filter.
+            </div>
+        {% endif %}
+    </div>
+    
+    <input type="hidden" name="token" value="{{ token }}">
+</form>
+
+<script>
+function submitUpdates(event) {
+    event.preventDefault();
+    
+    const tickets = [];
+    const container = document.getElementById('tickets-container');
+    
+    if (!container) {
+        alert('No tickets to submit');
+        return false;
+    }
+    
+    const ticketCards = container.querySelectorAll('.ticket-card');
+    
+    ticketCards.forEach(card => {
+        const ticketId = card.getAttribute('data-ticket-id');
+        const eta = document.getElementById(`eta_${ticketId}`).value;
+        const updateNote = document.getElementById(`update_${ticketId}`).value;
+        const blockers = document.getElementById(`blockers_${ticketId}`).value;
+        
+        if (!eta || !updateNote) {
+            alert(`Please fill in ETA and status for ${ticketId}`);
+            return false;
+        }
+        
+        tickets.push({
+            ticket_id: ticketId,
+            eta: eta,
+            update_note: updateNote,
+            blockers: blockers
+        });
+    });
+    
+    if (tickets.length === 0) {
+        alert('No valid updates to submit');
+        return false;
+    }
+    
+    // Show loading
+    const btn = event.target.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Submitting...';
+    btn.disabled = true;
+    
+    // Create form data
+    const formData = new FormData(event.target);
+    formData.append('token', document.querySelector('input[name="token"]').value);
+    
+    // Add updates as JSON
+    formData.append('updates', JSON.stringify(tickets));
+    
+    // Submit via fetch
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        document.body.innerHTML = html;
+    })
+    .catch(error => {
+        alert('Error submitting updates: ' + error);
+        btn.textContent = originalText;
+        btn.disabled = false;
+    });
+    
+    return false;
+}
+</script>
+
+{% endblock %}
