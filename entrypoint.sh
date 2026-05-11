@@ -53,6 +53,7 @@ nohup celery -A config worker \
     --loglevel=info \
     --concurrency=$WORKERS \
     --pool=prefork \
+    -Q trackit \
     > $LOG_DIR/celery_worker.log 2>&1 &
 WORKER_PID=$!
 echo -e "${GREEN}✓ Celery Worker started (PID: $WORKER_PID)${NC}"
@@ -86,9 +87,9 @@ nohup gunicorn config.wsgi:application \
     --max-requests 1000 \
     --max-requests-jitter 50 \
     --timeout 120 \
-    --access-logfile ../$LOG_DIR/gunicorn-access.log \
-    --error-logfile ../$LOG_DIR/gunicorn-error.log \
-    > ../$LOG_DIR/gunicorn.log 2>&1 &
+    --access-logfile $LOG_DIR/gunicorn-access.log \
+    --error-logfile $LOG_DIR/gunicorn-error.log \
+    > $LOG_DIR/gunicorn.log 2>&1 &
 GUNICORN_PID=$!
 echo -e "${GREEN}✓ Gunicorn started (PID: $GUNICORN_PID)${NC}"
 echo ""

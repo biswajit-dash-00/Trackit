@@ -122,12 +122,26 @@ REST_FRAMEWORK = {
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '*').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # Celery configuration
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+# Build Redis URL from environment variables
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
+REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', '')
+REDIS_SSL = os.environ.get('REDIS_SSL', 'false').lower() == 'true'
+
+# Build broker URL with SSL support if needed
+if REDIS_PASSWORD:
+    redis_scheme = 'rediss' if REDIS_SSL else 'redis'
+    redis_url = f'{redis_scheme}://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0'
+else:
+    redis_scheme = 'redis'
+    redis_url = f'{redis_scheme}://{REDIS_HOST}:{REDIS_PORT}/0'
+
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', redis_url)
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', "django-db")
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -151,22 +165,22 @@ CELERY_BEAT_SCHEDULE = {
     'hourly-snapshot-job': {
         'task': 'scheduler.tasks.hourly_snapshot_job',
         'schedule': crontab(minute=0),  # Run every hour at minute 0
-        'options': {'queue': 'celery'},
+        'options': {'queue': 'trackit'},
     },
     'reminder-job': {
         'task': 'scheduler.tasks.reminder_job',
         'schedule': crontab(hour=REMINDER_HOUR, minute=REMINDER_MINUTE),
-        'options': {'queue': 'celery'},
+        'options': {'queue': 'trackit'},
     },
     'report-job': {
         'task': 'scheduler.tasks.report_job',
         'schedule': crontab(hour=REPORT_HOUR, minute=REPORT_MINUTE),
-        'options': {'queue': 'celery'},
+        'options': {'queue': 'trackit'},
     },
     'cleanup-tokens': {
         'task': 'scheduler.tasks.cleanup_expired_tokens',
         'schedule': crontab(minute=0),  # Run every hour at minute 0
-        'options': {'queue': 'celery'},
+        'options': {'queue': 'trackit'},
     },
 }
 
