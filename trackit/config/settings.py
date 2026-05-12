@@ -123,6 +123,7 @@ REST_FRAMEWORK = {
 
 # CORS
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '*').split(',')
+CSRF_TRUSTED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '*').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # Celery configuration
