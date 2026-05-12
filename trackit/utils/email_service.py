@@ -203,3 +203,38 @@ class EmailService:
             import traceback
             traceback.print_exc()
             return False
+    
+    @staticmethod
+    def send_admin_notification(
+        admin_email: str,
+        filter_name: str,
+        subject_line: str,
+        message: str
+    ) -> bool:
+        """
+        Send admin notification email (simple text email)
+        
+        Args:
+            admin_email: Admin email address
+            filter_name: Name of the filter
+            subject_line: Email subject
+            message: Email body message
+            
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        try:
+            email = EmailMultiAlternatives(
+                subject=subject_line,
+                body=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[admin_email]
+            )
+            email.send(fail_silently=False)
+            
+            logger.info(f"Admin notification sent to {admin_email}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"Failed to send admin notification to {admin_email}: {str(e)}")
+            return False

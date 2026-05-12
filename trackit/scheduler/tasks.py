@@ -17,17 +17,17 @@ logger = logging.getLogger(__name__)
 @shared_task
 def hourly_snapshot_job():
     """
-    Hourly Job: Capture ONLY NEW tickets that haven't been captured yet TODAY
+    Hourly Job: Capture ONLY NEW tickets that appeared since yesterday's baseline
     
     Purpose: Catch tickets that are created AND closed within 24 hours
     These tickets would be lost if we only compare 9 PM snapshots.
     
     Process:
-    1. Get today's existing snapshots (from previous hourly runs)
+    1. Get yesterday's 9 PM baseline snapshot (using snapshot_date, not created_at)
     2. Fetch current tickets from Jira
-    3. Find tickets NOT already captured today
+    3. Find tickets NOT in yesterday's baseline (truly new today)
     4. Create snapshots ONLY for these new tickets
-    5. This prevents duplicate tracking and re-adding of same tickets
+    5. This prevents duplicate tracking and multiple captures per day
     """
     try:
         logger.info("Starting hourly snapshot job...")
@@ -38,14 +38,28 @@ def hourly_snapshot_job():
         new_tickets_captured = 0
         
         today = date.today()
+        yesterday = today - timedelta(days=1)
         
         for filter_instance in filters:
             try:
-                # Get tickets already captured TODAY (from all previous hourly runs)
-                today_snapshot_ids = set(
+                # Get yesterday's 9 PM baseline snapshot
+                # Use snapshot_date (explicit date) not created_at (auto timestamp with timezone issues)
+                yesterday_baseline = set(
                     TicketSnapshot.objects.filter(
                         filter=filter_instance,
-                        created_at__date=today
+                        snapshot_date=yesterday
+                    ).values_list('ticket_id', flat=True)
+                )
+                
+                if not yesterday_baseline:
+                    logger.info(f"⏭️  No baseline for {filter_instance.name}, skipping hourly snapshot")
+                    continue
+                
+                # Also get tickets already captured TODAY to prevent duplicates within same day
+                today_captured = set(
+                    TicketSnapshot.objects.filter(
+                        filter=filter_instance,
+                        snapshot_date=today
                     ).values_list('ticket_id', flat=True).distinct()
                 )
                 
@@ -53,9 +67,10 @@ def hourly_snapshot_job():
                 jira_service = JiraService()
                 current_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
                 
-                # Find NEW tickets (not yet captured today)
+                # Find NEW tickets from yesterday AND not yet captured today
                 current_ids = set(t['ticket_id'] for t in current_tickets)
-                new_ticket_ids = current_ids - today_snapshot_ids
+                new_from_yesterday = current_ids - yesterday_baseline
+                new_ticket_ids = new_from_yesterday - today_captured
                 
                 if not new_ticket_ids:
                     logger.info(f"✓ No new tickets for {filter_instance.name} this hour")
@@ -282,8 +297,38 @@ def report_job():
                 ).order_by('-created_at').first()
                 
                 if not yesterday_snapshot:
-                    # Skip report if yesterday's baseline is missing
-                    # But still create today's snapshot for tomorrow's use
+                    # Send notification to admin about missing baseline
+                    message = f"""
+TrackIt Report Generation Failed - Not Enough Data
+
+Filter: {filter_instance.name}
+Date: {today}
+Issue: Yesterday's baseline snapshot is missing ({yesterday})
+
+Reason: 
+The report generation requires a baseline snapshot from yesterday (9 PM) to compare against today's snapshot and identify:
+- New tickets created today
+- Resolved tickets from yesterday
+- Updated tickets
+
+Action Required:
+1. Ensure the hourly_snapshot_job ran successfully yesterday
+2. Check that yesterday's 9 PM snapshot was created
+3. Retry report generation tomorrow
+
+Note: Today's snapshot has been created as baseline for tomorrow's report.
+
+---
+This is an automated notification from TrackIt.
+"""
+                    EmailService.send_admin_notification(
+                        admin_email=filter_instance.admin_email,
+                        filter_name=filter_instance.name,
+                        subject_line=f"⚠️ TrackIt Report Failed - Missing Baseline for {filter_instance.name}",
+                        message=message
+                    )
+                    
+                    # Still create today's snapshot for tomorrow's use
                     logger.warning(f"Yesterday's snapshot missing for {filter_instance.name} ({yesterday}), skipping report but creating today's snapshot")
                     jira_service = JiraService()
                     today_count = SnapshotService.create_snapshot(filter_instance, jira_service)
