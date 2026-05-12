@@ -17,17 +17,17 @@ logger = logging.getLogger(__name__)
 @shared_task
 def hourly_snapshot_job():
     """
-    Hourly Job: Capture ONLY NEW tickets that appeared since yesterday 9 PM
+    Hourly Job: Capture ONLY NEW tickets that haven't been captured yet TODAY
     
     Purpose: Catch tickets that are created AND closed within 24 hours
     These tickets would be lost if we only compare 9 PM snapshots.
     
     Process:
-    1. Get yesterday's 9 PM baseline snapshot
+    1. Get today's existing snapshots (from previous hourly runs)
     2. Fetch current tickets from Jira
-    3. Find tickets NOT in yesterday's baseline (truly new)
+    3. Find tickets NOT already captured today
     4. Create snapshots ONLY for these new tickets
-    5. This prevents duplicate tracking of existing tickets
+    5. This prevents duplicate tracking and re-adding of same tickets
     """
     try:
         logger.info("Starting hourly snapshot job...")
@@ -38,35 +38,24 @@ def hourly_snapshot_job():
         new_tickets_captured = 0
         
         today = date.today()
-        yesterday = today - timedelta(days=1)
         
         for filter_instance in filters:
             try:
-                # Get yesterday's 9 PM baseline
-                yesterday_snapshot = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    created_at__date=yesterday
-                ).order_by('-created_at').first()
-                
-                if not yesterday_snapshot:
-                    logger.info(f"⏭️  No baseline for {filter_instance.name}, skipping hourly snapshot")
-                    continue
-                
-                # Get baseline ticket IDs
-                yesterday_baseline = set(
+                # Get tickets already captured TODAY (from all previous hourly runs)
+                today_snapshot_ids = set(
                     TicketSnapshot.objects.filter(
                         filter=filter_instance,
-                        created_at__date=yesterday
-                    ).values_list('ticket_id', flat=True)
+                        created_at__date=today
+                    ).values_list('ticket_id', flat=True).distinct()
                 )
                 
                 # Fetch current tickets from Jira
                 jira_service = JiraService()
                 current_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
                 
-                # Find NEW tickets (not in yesterday's baseline)
+                # Find NEW tickets (not yet captured today)
                 current_ids = set(t['ticket_id'] for t in current_tickets)
-                new_ticket_ids = current_ids - yesterday_baseline
+                new_ticket_ids = current_ids - today_snapshot_ids
                 
                 if not new_ticket_ids:
                     logger.info(f"✓ No new tickets for {filter_instance.name} this hour")
