@@ -47,7 +47,7 @@ class UpdatePageView(View):
                         'token_validity_hours': settings.TOKEN_VALIDITY_HOURS,
                     })
                 # Check if token has expired (expires_at is in the past)
-                if email_token.expires_at and email_token.expires_at <= timezone.now():
+                if email_token.expires_at and email_token.expires_at < timezone.now():
                     return render(request, 'update_error.html', {
                         'error': 'This link has expired. The update window has closed.',
                         'is_update_page': True,
@@ -56,37 +56,25 @@ class UpdatePageView(View):
             except EmailToken.DoesNotExist:
                 pass
             
-            # Get assignee's tickets - only show CURRENT active tickets
-            # First try fresh snapshot (batch=2), if not available fetch current from Jira
-            fresh_snapshots = TicketSnapshot.objects.filter(
-                filter=filter_instance,
-                assignee=assignee_email,
-                snapshot_date=timezone.now().date(),
-                snapshot_batch=2  # Fresh snapshot with current tickets
-            ).values('ticket_id', 'title', 'status', 'priority')
+            # Get assignee's tickets - only show CURRENT active tickets from jira
+            # Fetch CURRENT tickets from Jira (same as reminder job does)
+            # This ensures only active tickets are shown, not moved ones
+            from utils.jira_service import JiraService
+            jira_service = JiraService()
+            current_jira_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
             
-            if fresh_snapshots.exists():
-                # Use fresh snapshots if available (after 9 PM)
-                tickets = fresh_snapshots
-            else:
-                # Fetch CURRENT tickets from Jira (same as reminder job does)
-                # This ensures only active tickets are shown, not moved ones
-                from utils.jira_service import JiraService
-                jira_service = JiraService()
-                current_jira_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
-                
-                # Filter to only this assignee's tickets
-                tickets = [
-                    {
-                        'ticket_id': t['ticket_id'],
-                        'title': t['title'],
-                        'status': t['status'],
-                        'priority': t.get('priority', 'Unknown')
-                    }
-                    for t in current_jira_tickets
-                    if t['assignee'] == assignee_email
-                ]
-            
+            # Filter to only this assignee's tickets
+            tickets = [
+                {
+                    'ticket_id': t['ticket_id'],
+                    'title': t['title'],
+                    'status': t['status'],
+                    'priority': t.get('priority', 'Unknown')
+                }
+                for t in current_jira_tickets
+                if t['assignee'] == assignee_email
+            ]
+        
             context = {
                 'filter': filter_instance,
                 'assignee': assignee_email,

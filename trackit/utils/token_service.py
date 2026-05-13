@@ -1,8 +1,9 @@
 """Token Service for generating and validating secure tokens"""
 import jwt
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.conf import settings
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,12 @@ class TokenService:
             JWT token string
         """
         try:
+            now = timezone.now()
             payload = {
                 'filter_id': filter_id,
                 'assignee_email': assignee_email,
-                'iat': datetime.utcnow(),
-                'exp': datetime.utcnow() + timedelta(hours=cls.TOKEN_EXPIRY_HOURS),
+                'iat': now,
+                'exp': now + timedelta(hours=cls.TOKEN_EXPIRY_HOURS),
             }
             
             token = jwt.encode(
