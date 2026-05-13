@@ -110,7 +110,7 @@ class UpdatePageView(View):
             # Check if token has expired before processing submission
             try:
                 email_token = EmailToken.objects.get(token=token)
-                if email_token.expires_at and email_token.expires_at <= timezone.now():
+                if email_token.expires_at and email_token.expires_at < timezone.now():
                     return JsonResponse({
                         'error': 'This link has expired. The update window has closed.'
                     }, status=401)
@@ -131,15 +131,13 @@ class UpdatePageView(View):
             logger.info(f"Received updates JSON: {updates_json_str[:100]}...")
             
             created_count = 0
+            today = timezone.now().date()
             
             try:
                 # Parse JSON string to list of updates
                 updates_list = json.loads(updates_json_str)
                 logger.info(f"Parsed {len(updates_list)} updates")
-                
-                from django.utils import timezone
-                today = timezone.now().date()
-                
+
                 # Create TicketUpdate record for each ticket
                 for update in updates_list:
                     try:
