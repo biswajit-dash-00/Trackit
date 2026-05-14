@@ -386,7 +386,12 @@ class AnalyticsService:
                         report_lines.append("")
                         
                         for assignee, tickets in sorted(awaiting_by_assignee.items()):
-                            tickets_str = ", ".join(sorted(set(tickets)))
+                            unique_tickets = sorted(set(tickets))
+                            # Limit to 3 tickets, add "..." if more
+                            if len(unique_tickets) > 3:
+                                tickets_str = ", ".join(unique_tickets[:3]) + " ..."
+                            else:
+                                tickets_str = ", ".join(unique_tickets)
                             report_lines.append(f"- 🚩 {assignee}: {tickets_str} ({len(set(tickets))} tickets)")
                         report_lines.append("")
             
@@ -457,8 +462,11 @@ class AnalyticsService:
                 shown_tickets = set()
                 new_ticket_ids = set(comparison_result.get('new_tickets', []) if comparison_result else [])
                 
+                # Sort snapshots by assignee name, then by ticket_id
+                sorted_snapshots = sorted(all_day_snapshots, key=lambda x: (x.assignee.lower(), x.ticket_id))
+                
                 # Add only ACTIVE tickets (exclude resolved ones)
-                for snapshot in all_day_snapshots:
+                for snapshot in sorted_snapshots:
                     # Skip resolved tickets - they shouldn't appear in active ticket table
                     if snapshot.ticket_id in resolved_ticket_ids:
                         continue
