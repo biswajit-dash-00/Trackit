@@ -239,7 +239,6 @@ pytest -v             # Verbose output
 - **TicketSnapshot**: Point-in-time snapshot of tickets
 - **TicketUpdate**: Assignee updates for tickets
 - **EmailToken**: Secure, expiring tokens for email links
-- **SnapshotComparison**: Comparison results between snapshots
 - **DailyAnalytics**: Computed metrics for the day
 - **DailyReport**: Generated markdown reports
 

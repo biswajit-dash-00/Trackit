@@ -121,42 +121,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name="SnapshotComparison",
-            fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True,
-                        primary_key=True,
-                        serialize=False,
-                        verbose_name="ID",
-                    ),
-                ),
-                ("comparison_date", models.DateField()),
-                ("new_tickets", models.JSONField(default=list)),
-                ("removed_tickets", models.JSONField(default=list)),
-                ("status_changes", models.JSONField(default=dict)),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                (
-                    "filter",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="comparisons",
-                        to="core.filter",
-                    ),
-                ),
-            ],
-            options={
-                "ordering": ["-comparison_date"],
-                "indexes": [
-                    models.Index(
-                        fields=["filter", "comparison_date"],
-                        name="core_snapsh_filter__45ee2d_idx",
-                    )
-                ],
-            },
-        ),
-        migrations.CreateModel(
             name="EmailToken",
             fields=[
                 (

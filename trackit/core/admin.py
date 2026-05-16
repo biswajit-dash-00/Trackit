@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from core.models import (
     Filter, TicketSnapshot, TicketUpdate, EmailToken,
-    SnapshotComparison, DailyAnalytics, DailyReport
+    DailyAnalytics, DailyReport
 )
 
 
@@ -134,36 +134,6 @@ class EmailTokenAdmin(admin.ModelAdmin):
         else:
             return format_html('<span style="color: red;">✗ Expired</span>')
     used_status.short_description = 'Status'
-
-
-@admin.register(SnapshotComparison)
-class SnapshotComparisonAdmin(admin.ModelAdmin):
-    list_display = ('filter', 'comparison_date', 'new_count', 'removed_count', 'changes_count')
-    list_filter = ('filter', 'comparison_date')
-    readonly_fields = ('new_tickets', 'removed_tickets', 'status_changes', 'created_at')
-    fieldsets = (
-        ('Comparison', {
-            'fields': ('filter', 'comparison_date')
-        }),
-        ('Results', {
-            'fields': ('new_tickets', 'removed_tickets', 'status_changes')
-        }),
-        ('Timestamps', {
-            'fields': ('created_at',)
-        }),
-    )
-    
-    def new_count(self, obj):
-        return len(obj.new_tickets)
-    new_count.short_description = 'New'
-    
-    def removed_count(self, obj):
-        return len(obj.removed_tickets)
-    removed_count.short_description = 'Removed'
-    
-    def changes_count(self, obj):
-        return len(obj.status_changes)
-    changes_count.short_description = 'Changes'
 
 
 @admin.register(DailyAnalytics)

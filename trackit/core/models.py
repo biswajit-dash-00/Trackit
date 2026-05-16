@@ -100,25 +100,6 @@ class EmailToken(models.Model):
         return f"{self.assignee_email} - {self.filter.name}"
 
 
-class SnapshotComparison(models.Model):
-    """Stores comparison results between consecutive snapshots"""
-    filter = models.ForeignKey(Filter, on_delete=models.CASCADE, related_name='comparisons')
-    comparison_date = models.DateField()
-    new_tickets = models.JSONField(default=list)  # List of new ticket IDs
-    removed_tickets = models.JSONField(default=list)  # List of removed ticket IDs
-    status_changes = models.JSONField(default=dict)  # {ticket_id: {yesterday: status, today: status}}
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-comparison_date']
-        indexes = [
-            models.Index(fields=['filter', 'comparison_date']),
-        ]
-    
-    def __str__(self):
-        return f"{self.filter.name} - {self.comparison_date}"
-
-
 class DailyAnalytics(models.Model):
     """Computed analytics for daily report"""
     filter = models.ForeignKey(Filter, on_delete=models.CASCADE, related_name='analytics')

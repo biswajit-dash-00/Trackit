@@ -5,11 +5,9 @@ from datetime import datetime, date, timedelta
 from django.utils import timezone
 from typing import Dict, Any, List
 from core.models import (
-    TicketSnapshot, TicketUpdate, SnapshotComparison, 
+    TicketUpdate, 
     DailyAnalytics, DailyReport
 )
-from markdown import markdown as md_to_html
-
 logger = logging.getLogger(__name__)
 
 
@@ -17,12 +15,15 @@ class AnalyticsService:
     """Service to compute analytics and generate reports"""
     
     @staticmethod
-    def compute_daily_analytics(filter_instance, analytics_date: date = None) -> Dict[str, Any]:
+    def compute_daily_analytics(filter_instance, yesterday_snapshots, hourly_snapshots, today_snapshots, analytics_date=None) -> Dict[str, Any]:
         """
-        Compute analytics for a specific day
+        Compute analytics for a specific day using pre-fetched snapshot data.
         
         Args:
             filter_instance: Filter object
+            yesterday_snapshots: Queryset/list of yesterday's 9 PM TicketSnapshot records
+            hourly_snapshots: Queryset/list of today's intermediate hourly TicketSnapshot records
+            today_snapshots: Queryset/list of today's 9 PM TicketSnapshot records
             analytics_date: Date to compute analytics for (defaults to today)
             
         Returns:
@@ -31,176 +32,129 @@ class AnalyticsService:
         try:
             if analytics_date is None:
                 analytics_date = timezone.now().date()
-            
-            # Get only the FINAL 9 PM snapshot (not intermediate hourly snapshots)
-            # This ensures accurate active ticket count
-            latest_snapshot = TicketSnapshot.objects.filter(
-                filter=filter_instance,
-                created_at__date=analytics_date
-            ).order_by('-created_at').first()
-            
-            # Get the latest batch (within 5 seconds of each other = 9 PM batch)
-            if latest_snapshot:
-                latest_time = latest_snapshot.created_at
-                snapshots = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    created_at__date=analytics_date,
-                    created_at__gte=latest_time - timedelta(seconds=5)
-                )
-            else:
-                snapshots = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    created_at__date=analytics_date
-                )
-            
-            # Get all updates for the day
-            updates = TicketUpdate.objects.filter(
-                submitted_at__date=analytics_date
+
+            # --- Build in-memory lookup structures (single pass each, no extra DB calls) ---
+
+            # Yesterday 9PM: ticket_id -> snapshot
+            yesterday_dict = {s.ticket_id: s for s in yesterday_snapshots}
+            yesterday_ids = set(yesterday_dict.keys())
+
+            # Today 9PM: ticket_id -> snapshot (deduplicate — keep latest)
+            today_dict = {s.ticket_id: s for s in today_snapshots}
+            today_9pm_ids = set(today_dict.keys())
+
+            # Today hourly: just need ticket_ids for set operations
+            today_hourly_ids = set(s.ticket_id for s in hourly_snapshots)
+
+            # --- Core ticket sets ---
+
+            # NEW: appeared today (9PM or hourly) but NOT in yesterday 9PM
+            new_ticket_ids = (today_9pm_ids | today_hourly_ids) - yesterday_ids
+
+            # RESOLVED: in yesterday 9PM, seen in today's hourly, but gone from today's 9PM
+            resolved_ticket_ids = (yesterday_ids - today_9pm_ids) & today_hourly_ids
+
+            # PENDING = tickets in today's 9PM (active right now)
+            pending_count = len(today_9pm_ids)
+
+            # TOTAL = Pending + Resolved
+            total_tickets = pending_count + len(resolved_ticket_ids)
+
+            # --- ONE DB call for all today's updates ---
+            all_relevant_ids = list(today_9pm_ids | resolved_ticket_ids)
+            all_updates = list(
+                TicketUpdate.objects.filter(
+                    ticket_id__in=all_relevant_ids,
+                    submitted_at__date=analytics_date
+                ).values('ticket_id', 'assignee')
             )
-            
-            # Get comparison data
-            try:
-                comparison = SnapshotComparison.objects.get(
-                    filter=filter_instance,
-                    comparison_date=analytics_date
-                )
-            except SnapshotComparison.DoesNotExist:
-                comparison = None
-            
-            # Basic metrics - use unique tickets from baseline
-            all_ticket_ids = list(snapshots.values_list('ticket_id', flat=True).distinct())
-            
-            # Use set to ensure unique assignees (no duplicates)
-            unique_assignees = set(snapshots.values_list('assignee', flat=True))
-            
-            # Update compliance - count unique tickets with updates
-            ticket_ids_with_updates = set(updates.filter(
-                ticket_id__in=all_ticket_ids
-            ).values_list('ticket_id', flat=True))
-            updated_count = len(ticket_ids_with_updates)
-            
-            # Get comparison result
-            try:
-                comparison_result = SnapshotComparison.objects.get(
-                    filter=filter_instance,
-                    comparison_date=analytics_date
-                )
-            except SnapshotComparison.DoesNotExist:
-                comparison_result = None
-            
-            # Calculate fresh/active ticket count and total (all touched tickets)
-            if comparison_result:
-                # Use ticket lists directly from comparison model
-                resolved_count = len(comparison_result.removed_tickets) if comparison_result.removed_tickets else 0
-                # Fresh total = today's tickets (all_ticket_ids) minus resolved tickets
-                fresh_total = len(all_ticket_ids) - resolved_count
-                # Total = all tickets involved = fresh + resolved
-                total_tickets = len(all_ticket_ids)
-            else:
-                total_tickets = len(all_ticket_ids)
-                fresh_total = total_tickets
-                resolved_count = 0
-            
-            # Pending = active/fresh tickets - updated
-            missed_count = fresh_total - updated_count
-            
-            # Status metrics - use baseline tickets for status counts
-            status_counts = {}
-            for ticket_id in all_ticket_ids:
-                # Get the latest status for each ticket
-                ticket_snapshots = snapshots.filter(ticket_id=ticket_id).order_by('-created_at')
-                if ticket_snapshots.exists():
-                    status = ticket_snapshots.first().status
-                    status_counts[status] = status_counts.get(status, 0) + 1
-            
-            # New and resolved tickets (from comparison)
-            new_tickets_count = len(comparison_result.new_tickets) if comparison_result and comparison_result.new_tickets else 0
-            resolved_final_count = resolved_count
-            
-            # Assignee metrics - count unique tickets per assignee
-            # Use ONLY final 9 PM snapshot batch (not mix with hourly snapshots)
-            latest_snapshot = TicketSnapshot.objects.filter(
-                filter=filter_instance,
-                created_at__date=analytics_date
-            ).order_by('-created_at').first()
-            
-            if latest_snapshot:
-                latest_time = latest_snapshot.created_at
-                threshold = latest_time - timedelta(seconds=5)
-                logger.info(f"Analytics: Latest time={latest_time}, Threshold={threshold}")
-                
-                all_day_snapshots = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    created_at__date=analytics_date,
-                    created_at__gte=threshold
-                )
-                logger.info(f"Analytics: Final 9PM batch count={all_day_snapshots.count()}")
-            else:
-                all_day_snapshots = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    snapshot_date=analytics_date
-                )
-                logger.info(f"Analytics: Using snapshot_date fallback, count={all_day_snapshots.count()}")
-            
-            if all_day_snapshots.exists():
-                # Get unique assignees from final 9 PM snapshots only
-                all_unique_assignees = set(all_day_snapshots.values_list('assignee', flat=True))
-            else:
-                all_unique_assignees = unique_assignees
-            
-            assignee_metrics = {}
+            updated_ticket_ids = set(u['ticket_id'] for u in all_updates)
+
+            # UPDATED = updates on currently active (9PM) tickets only
+            updated_count = len(updated_ticket_ids & today_9pm_ids)
+
+            # AWAITING UPDATE = in today's 9PM with no update logged
+            awaiting_ticket_ids = today_9pm_ids - updated_ticket_ids
+
+            # --- Assignee metrics (all in-memory) ---
+
+            # Group today's 9PM tickets by assignee
+            assignee_9pm_tickets: Dict[str, set] = {}
+            for ticket_id, snapshot in today_dict.items():
+                assignee = snapshot.assignee
+                if assignee not in assignee_9pm_tickets:
+                    assignee_9pm_tickets[assignee] = set()
+                assignee_9pm_tickets[assignee].add(ticket_id)
+
+            # Resolved tickets per assignee (look up in yesterday_dict)
+            resolved_by_assignee: Dict[str, int] = {}
+            for ticket_id in resolved_ticket_ids:
+                if ticket_id in yesterday_dict:
+                    assignee = yesterday_dict[ticket_id].assignee
+                    resolved_by_assignee[assignee] = resolved_by_assignee.get(assignee, 0) + 1
+
+            # Awaiting updates per assignee (for report section)
+            awaiting_by_assignee: Dict[str, List] = {}
+            for ticket_id in awaiting_ticket_ids:
+                if ticket_id in today_dict:
+                    assignee = today_dict[ticket_id].assignee
+                    if assignee not in awaiting_by_assignee:
+                        awaiting_by_assignee[assignee] = []
+                    awaiting_by_assignee[assignee].append(ticket_id)
+
+            # Assignees who logged at least one update today
+            assignees_with_updates = set(u['assignee'] for u in all_updates)
+
+            # Build full assignee_metrics
+            assignee_metrics: Dict[str, Any] = {}
             no_update_assignees = []
-            
-            # Count tickets per assignee
-            for assignee in all_unique_assignees:
-                assignee_ticket_ids = list(all_day_snapshots.filter(
-                    assignee=assignee
-                ).values_list('ticket_id', flat=True).distinct())
-                
-                assignee_update_count = updates.filter(
-                    assignee=assignee,
-                    ticket_id__in=assignee_ticket_ids
-                ).count()
-                
-                tickets_count = len(assignee_ticket_ids)
-                resolved = all_day_snapshots.filter(
-                    assignee=assignee,
-                    status='Done'
-                ).values('ticket_id').distinct().count()
-                
+            all_assignees = set(assignee_9pm_tickets.keys()) | set(resolved_by_assignee.keys())
+
+            for assignee in all_assignees:
+                active_tickets = assignee_9pm_tickets.get(assignee, set())
+                resolved_for_assignee = resolved_by_assignee.get(assignee, 0)
+                has_update = assignee in assignees_with_updates
+
                 assignee_metrics[assignee] = {
-                    'tickets': tickets_count,
-                    'updated': assignee_update_count > 0,
-                    'resolved': resolved,
+                    'tickets': len(active_tickets),
+                    'resolved': resolved_for_assignee,
+                    # Contributor count = active + resolved (total managed today)
+                    'contributor_count': len(active_tickets) + resolved_for_assignee,
+                    'updated': has_update,
                 }
-                
-                if assignee_update_count == 0 and tickets_count > 0:
+
+                if not has_update and len(active_tickets) > 0:
                     no_update_assignees.append({
                         'assignee': assignee,
-                        'tickets': tickets_count
+                        'tickets': len(active_tickets)
                     })
-            
-            # Resolved by assignee - count unique tickets per assignee with Done status
-            resolved_by_assignee = {}
-            for assignee in unique_assignees:
-                resolved = snapshots.filter(
-                    assignee=assignee,
-                    status='Done'
-                ).values('ticket_id').distinct().count()
-                if resolved > 0:
-                    resolved_by_assignee[assignee] = resolved
-            
+
+            compliance_rate = (updated_count / pending_count * 100) if pending_count > 0 else 0
+
             analytics_data = {
                 'total_tickets': total_tickets,
+                'pending_count': pending_count,
                 'updated_count': updated_count,
-                'missed_count': missed_count,
-                'new_tickets_count': new_tickets_count,
-                'resolved_count': resolved_final_count,
-                'status_counts': status_counts,
+                'missed_count': pending_count - updated_count,
+                'new_tickets_count': len(new_ticket_ids),
+                'resolved_count': len(resolved_ticket_ids),
+                'compliance_rate': compliance_rate,
                 'assignee_count': len(assignee_metrics),
-                'compliance_rate': (updated_count / total_tickets * 100) if total_tickets > 0 else 0,
+                # Store for report generation — avoids re-querying SnapshotComparison
+                'new_tickets': sorted(new_ticket_ids),
+                'resolved_tickets': sorted(resolved_ticket_ids),
+                'awaiting_by_assignee': {k: sorted(v) for k, v in awaiting_by_assignee.items()},
+                # Store today's 9PM ticket details for the report table (ticket_id -> {fields})
+                'today_tickets': {
+                    ticket_id: {
+                        'assignee': s.assignee,
+                        'priority': s.priority,
+                        'status': s.status,
+                    }
+                    for ticket_id, s in today_dict.items()
+                },
             }
-            
+
             # Save analytics
             DailyAnalytics.objects.update_or_create(
                 filter=filter_instance,
@@ -208,18 +162,18 @@ class AnalyticsService:
                 defaults={
                     'total_tickets': total_tickets,
                     'updated_count': updated_count,
-                    'missed_count': missed_count,
-                    'new_tickets_count': new_tickets_count,
-                    'resolved_count': resolved_final_count,
+                    'missed_count': pending_count - updated_count,
+                    'new_tickets_count': len(new_ticket_ids),
+                    'resolved_count': len(resolved_ticket_ids),
                     'assignee_metrics': assignee_metrics,
                     'no_update_assignees': no_update_assignees,
                     'resolved_by_assignee': resolved_by_assignee,
                     'analytics_data': analytics_data,
                 }
             )
-            
+
             return analytics_data
-        
+
         except Exception as e:
             logger.error(f"Failed to compute analytics: {str(e)}")
             raise
@@ -250,23 +204,11 @@ class AnalyticsService:
                 logger.warning(f"No analytics found for {analytics_date}")
                 return "**Daily Report**\n\nNo data available"
             
-            # Get comparison data from stored SnapshotComparison
-            try:
-                comparison = SnapshotComparison.objects.get(
-                    filter=filter_instance,
-                    comparison_date=analytics_date
-                )
-                comparison_result = {
-                    'new_tickets': comparison.new_tickets or [],
-                    'resolved_tickets': comparison.removed_tickets or [],
-                    'status_changes': comparison.status_changes or {},
-                }
-            except SnapshotComparison.DoesNotExist:
-                comparison_result = {
-                    'new_tickets': [],
-                    'resolved_tickets': [],
-                    'status_changes': {},
-                }
+            # Get comparison data from analytics_data (pre-computed, no extra DB call)
+            comparison_result = {
+                'new_tickets': analytics.analytics_data.get('new_tickets', []),
+                'resolved_tickets': analytics.analytics_data.get('resolved_tickets', []),
+            }
             
             # Build markdown report with emojis and formatting
             report_lines = []
@@ -304,26 +246,12 @@ class AnalyticsService:
                 report_lines.append("## 🏆 TOP CONTRIBUTORS")
                 report_lines.append("")
                 
-                # Build contributor metrics including resolved tickets
-                contributor_metrics = {}
-                
-                # Start with active tickets
-                for assignee, metrics in analytics.assignee_metrics.items():
-                    contributor_metrics[assignee] = metrics['tickets']
-                
-                # Add resolved tickets by getting assignee from snapshots
-                if comparison_result['resolved_tickets']:
-                    yesterday = analytics_date - timedelta(days=1)
-                    yesterday_snapshots = TicketSnapshot.objects.filter(
-                        filter=filter_instance,
-                        snapshot_date=yesterday,
-                        ticket_id__in=comparison_result['resolved_tickets']
-                    )
-                    
-                    for snapshot in yesterday_snapshots:
-                        if snapshot.assignee not in contributor_metrics:
-                            contributor_metrics[snapshot.assignee] = 0
-                        contributor_metrics[snapshot.assignee] += 1
+                # Build contributor metrics from analytics_data (no extra DB call)
+                # contributor_count = active (9PM) tickets + resolved tickets
+                contributor_metrics = {
+                    assignee: metrics.get('contributor_count', metrics['tickets'])
+                    for assignee, metrics in analytics.assignee_metrics.items()
+                }
                 
                 # Sort and display top 3
                 sorted_assignees = sorted(
@@ -338,84 +266,26 @@ class AnalyticsService:
                     report_lines.append(f"{idx + 1}. {medal} {assignee} — {ticket_count} tickets")
                 report_lines.append("")
             
-            # Tickets awaiting updates (no submission) - RED FLAG - ONLY ACTIVE TICKETS (batch 2)
-            if filter_instance and analytics_date:
-                from core.models import TicketUpdate
-                
-                # Get ONLY the final 9 PM snapshot - tickets still in filter
-                final_snapshots = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    snapshot_date=analytics_date
-                ).order_by('-created_at')
-                
-                if final_snapshots.exists():
-                    latest_time = final_snapshots.first().created_at
-                    day_tickets = TicketSnapshot.objects.filter(
-                        filter=filter_instance,
-                        snapshot_date=analytics_date,
-                        created_at__gte=latest_time - timedelta(seconds=5)
-                    )
-                else:
-                    day_tickets = final_snapshots
-                
-                if day_tickets.exists():
-                    day_ticket_ids = list(day_tickets.values_list('ticket_id', flat=True).distinct())
-                    
-                    # Exclude resolved tickets
-                    resolved_ticket_ids = set(comparison_result['resolved_tickets']) if comparison_result else set()
-                    active_ticket_ids = [tid for tid in day_ticket_ids if tid not in resolved_ticket_ids]
-                    
-                    # Get ticket IDs with submissions TODAY ONLY
-                    submitted_tickets = set(TicketUpdate.objects.filter(
-                        ticket_id__in=active_ticket_ids,
-                        submitted_at__date=analytics_date
-                    ).values_list('ticket_id', flat=True).distinct())
-                    
-                    # Find active tickets without submissions (grouped by assignee)
-                    awaiting_by_assignee = {}
-                    for snapshot in day_tickets:
-                        if snapshot.ticket_id in active_ticket_ids and snapshot.ticket_id not in submitted_tickets:
-                            if snapshot.assignee not in awaiting_by_assignee:
-                                awaiting_by_assignee[snapshot.assignee] = []
-                            awaiting_by_assignee[snapshot.assignee].append(snapshot.ticket_id)
-                    
-                    if awaiting_by_assignee:
-                        report_lines.append("---")
-                        report_lines.append("")
-                        report_lines.append("## 🚩 AWAITING UPDATES (NO SUBMISSION)")
-                        report_lines.append("")
-                        
-                        for assignee, tickets in sorted(awaiting_by_assignee.items()):
-                            unique_tickets = sorted(set(tickets))
-                            # Limit to 3 tickets, add "..." if more
-                            if len(unique_tickets) > 3:
-                                tickets_str = ", ".join(unique_tickets[:3]) + " ..."
-                            else:
-                                tickets_str = ", ".join(unique_tickets)
-                            report_lines.append(f"- 🚩 {assignee}: {tickets_str} ({len(set(tickets))} tickets)")
-                        report_lines.append("")
-            
-            # New tickets section
-            if comparison_result and comparison_result['new_tickets']:
+            # Tickets awaiting updates — use pre-computed data from analytics_data (no extra DB call)
+            awaiting_by_assignee = analytics.analytics_data.get('awaiting_by_assignee', {})
+
+            if awaiting_by_assignee:
                 report_lines.append("---")
                 report_lines.append("")
-                report_lines.append("## 🆕 NEW TICKETS")
+                report_lines.append("## 🚩 AWAITING UPDATES (NO SUBMISSION)")
                 report_lines.append("")
-                
-                for ticket_id in comparison_result['new_tickets']:
-                    report_lines.append(f"- {ticket_id}")
+
+                for assignee in sorted(awaiting_by_assignee.keys()):
+                    unique_tickets = sorted(set(awaiting_by_assignee[assignee]))
+                    if len(unique_tickets) > 3:
+                        tickets_str = ", ".join(unique_tickets[:3]) + " ..."
+                    else:
+                        tickets_str = ", ".join(unique_tickets)
+                    report_lines.append(f"- 🚩 {assignee}: {tickets_str} ({len(unique_tickets)} tickets)")
                 report_lines.append("")
             
-            # Status changes section (10 AM → 9 PM)
-            if comparison_result and comparison_result['status_changes']:
-                report_lines.append("---")
-                report_lines.append("")
-                report_lines.append("## 🔄 STATUS CHANGES")
-                report_lines.append("")
-                
-                for ticket_id, changes in comparison_result['status_changes'].items():
-                    report_lines.append(f"- {ticket_id}: {changes['yesterday']} → {changes['today']}")
-                report_lines.append("")
+            # New tickets section - removed (already shown with 🆕 in detailed table)
+            # Status changes section - removed for cleaner report
             
             # Resolved/Moved tickets section
             if comparison_result and comparison_result['resolved_tickets']:
@@ -434,63 +304,44 @@ class AnalyticsService:
             report_lines.append("## 📝 DETAILED TICKET UPDATES")
             report_lines.append("")
             
-            # Get ONLY the final 9 PM snapshot for accurate ticket list
-            final_9pm_snapshots = TicketSnapshot.objects.filter(
-                filter=filter_instance,
-                snapshot_date=analytics_date
-            ).order_by('-created_at')
-            
-            if final_9pm_snapshots.exists():
-                latest_time = final_9pm_snapshots.first().created_at
-                all_day_snapshots = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    snapshot_date=analytics_date,
-                    created_at__gte=latest_time - timedelta(seconds=5)
-                ).order_by('priority', 'ticket_id')
-            else:
-                all_day_snapshots = final_9pm_snapshots
-            
-            # Get resolved tickets (these only come from baseline, not same-day resolutions)
-            resolved_tickets = comparison_result.get('resolved_tickets', []) if comparison_result else []
-            resolved_ticket_ids = set(resolved_tickets)
-            
-            if all_day_snapshots.exists():
-                report_lines.append("| Ticket | Assignee | Status | ETA | Update | Blockers |")
-                report_lines.append("|--------|----------|--------|-----|--------|----------|")
-                
-                # Track unique tickets to avoid duplicates
-                shown_tickets = set()
-                new_ticket_ids = set(comparison_result.get('new_tickets', []) if comparison_result else [])
-                
-                # Sort snapshots by assignee name, then by ticket_id
-                sorted_snapshots = sorted(all_day_snapshots, key=lambda x: (x.assignee.lower(), x.ticket_id))
-                
-                # Add only ACTIVE tickets (exclude resolved ones)
-                for snapshot in sorted_snapshots:
-                    # Skip resolved tickets - they shouldn't appear in active ticket table
-                    if snapshot.ticket_id in resolved_ticket_ids:
-                        continue
-                        
-                    if snapshot.ticket_id not in shown_tickets:
-                        shown_tickets.add(snapshot.ticket_id)
-                        
-                        # Get update for this ticket submitted TODAY ONLY
-                        update = TicketUpdate.objects.filter(
-                            ticket_id=snapshot.ticket_id,
-                            assignee=snapshot.assignee,
-                            submitted_at__date=analytics_date
-                        ).order_by('-submitted_at').first()
-                        
-                        eta = update.eta if update else "—"
-                        note = update.update_note if update and update.update_note else "—"
-                        blockers = update.blockers if update and update.blockers else "—"
-                        
-                        # Add marker for new tickets so assignee knows to submit update
-                        ticket_label = f"{snapshot.ticket_id} 🆕" if snapshot.ticket_id in new_ticket_ids else snapshot.ticket_id
-                        
-                        report_lines.append(f"| {ticket_label} | {snapshot.assignee} | {snapshot.status} | {eta} | {note} | {blockers} |")
-            
-            # Resolved tickets are shown in the "RESOLVED" section above, not in the detail table
+            # Build detailed ticket table from pre-computed analytics_data (no snapshot re-fetch)
+            today_tickets = analytics.analytics_data.get('today_tickets', {})
+            new_ticket_ids = set(comparison_result['new_tickets'])
+            resolved_ticket_ids = set(comparison_result['resolved_tickets'])
+
+            # ONE batched DB call for all updates today
+            active_ticket_ids = [tid for tid in today_tickets if tid not in resolved_ticket_ids]
+            all_updates_qs = TicketUpdate.objects.filter(
+                ticket_id__in=active_ticket_ids,
+                submitted_at__date=analytics_date
+            ).order_by('-submitted_at').values('ticket_id', 'assignee', 'eta', 'update_note', 'blockers')
+
+            # Build update lookup: ticket_id -> update row (latest per ticket)
+            update_lookup: Dict[str, Any] = {}
+            for upd in all_updates_qs:
+                if upd['ticket_id'] not in update_lookup:
+                    update_lookup[upd['ticket_id']] = upd
+
+            if today_tickets:
+                report_lines.append("| Ticket | Assignee | Priority | Status | ETA | Update | Blockers |")
+                report_lines.append("|--------|----------|----------|--------|-----|--------|----------|")
+
+                # Sort by assignee name then ticket_id (all in-memory)
+                sorted_tickets = sorted(
+                    [(tid, info) for tid, info in today_tickets.items() if tid not in resolved_ticket_ids],
+                    key=lambda x: (x[1]['assignee'].lower(), x[0])
+                )
+
+                for ticket_id, info in sorted_tickets:
+                    upd = update_lookup.get(ticket_id)
+                    eta = upd['eta'] if upd and upd['eta'] else "—"
+                    note = upd['update_note'] if upd and upd['update_note'] else "—"
+                    blockers = upd['blockers'] if upd and upd['blockers'] else "—"
+                    ticket_label = f"{ticket_id} 🆕" if ticket_id in new_ticket_ids else ticket_id
+                    report_lines.append(
+                        f"| {ticket_label} | {info['assignee']} | {info['priority']} "
+                        f"| {info['status']} | {eta} | {note} | {blockers} |"
+                    )
             else:
                 report_lines.append("No active tickets in filter.")
             

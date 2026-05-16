@@ -114,21 +114,6 @@ def hourly_snapshot_job():
 
 
 @shared_task
-def snapshot_job():
-    """DEPRECATED: This job is no longer used.
-    
-    All snapshot and reporting is now done by report_job at 9 PM.
-    report_job compares yesterday's 9 PM snapshot with today's 9 PM snapshot
-    for a full 24-hour comparison.
-    """
-    logger.info("snapshot_job is deprecated - all snapshots taken at report time")
-    return {
-        'status': 'skipped',
-        'message': 'snapshot_job deprecated - report_job handles all snapshots',
-    }
-
-
-@shared_task
 def reminder_job():
     """
     6 PM Job: Send reminders to assignees with CURRENT active tickets
@@ -291,12 +276,12 @@ def report_job():
                     continue
                 
                 # Get yesterday's snapshot (baseline from 9 PM yesterday)
-                yesterday_snapshot = TicketSnapshot.objects.filter(
+                yesterday_snapshots = TicketSnapshot.objects.filter(
                     filter=filter_instance,
-                    created_at__date=yesterday
-                ).order_by('-created_at').first()
+                    snapshot_date=yesterday
+                ).order_by('-created_at')
                 
-                if not yesterday_snapshot:
+                if not yesterday_snapshots.exists():
                     # Send notification to admin about missing baseline
                     message = f"""
 TrackIt Report Generation Failed - Not Enough Data
@@ -331,128 +316,46 @@ This is an automated notification from TrackIt.
                     # Still create today's snapshot for tomorrow's use
                     logger.warning(f"Yesterday's snapshot missing for {filter_instance.name} ({yesterday}), skipping report but creating today's snapshot")
                     jira_service = JiraService()
-                    today_count = SnapshotService.create_snapshot(filter_instance, jira_service)
+                    today_count, _ = SnapshotService.create_snapshot(filter_instance, jira_service)
                     logger.info(f"✓ Created today's snapshot with {today_count} tickets for {filter_instance.name} (baseline for tomorrow)")
                     continue
                 
                 # Track which tickets had hourly snapshots (for later cleanup)
-                hourly_ticket_ids = set(TicketSnapshot.objects.filter(
+                hourly_snapshots = TicketSnapshot.objects.filter(
                     filter=filter_instance,
-                    created_at__date=today
-                ).values_list('ticket_id', flat=True))
+                    snapshot_date=today
+                )
                 
                 # Create today's snapshot (final state at 9 PM today)
                 jira_service = JiraService()
-                today_count = SnapshotService.create_snapshot(filter_instance, jira_service)
+                today_count, today_first_snapshot = SnapshotService.create_snapshot(filter_instance, jira_service)
                 logger.info(f"✓ Created today's snapshot with {today_count} tickets for {filter_instance.name}")
                 
                 # Get today's snapshot just created
-                today_snapshot = TicketSnapshot.objects.filter(
+                today_snapshots = TicketSnapshot.objects.filter(
                     filter=filter_instance,
-                    created_at__date=today
-                ).order_by('-created_at').first()
+                    snapshot_date=today,
+                    created_at__gte=today_first_snapshot.created_at - timedelta(seconds=30)
+
+                ).order_by('-created_at')
                 
-                if not today_snapshot:
+                if not today_snapshots.exists():
                     logger.error(f"Failed to create today's snapshot for {filter_instance.name}")
                     continue
                 
-                # Compare yesterday vs today snapshots with intermediate tracking
-                logger.info(f"Comparing snapshots: {yesterday_snapshot.id} (yesterday) vs {today_snapshot.id} (today)")
-                
-                # Also capture any tickets that appeared in intermediate snapshots
-                # These are tickets created after yesterday's 9 PM but before today's 9 PM
-                yesterday_9pm = yesterday_snapshot.created_at
-                today_9pm = today_snapshot.created_at
-                
-                SnapshotService.compare_24hour_snapshots_with_tracking(
-                    filter_instance, 
-                    yesterday_snapshot, 
-                    today_snapshot,
-                    yesterday_9pm,
-                    today_9pm
-                )
-                logger.info(f"✓ 24-hour snapshots compared for {filter_instance.name}")
-                
                 # Compute daily analytics (BEFORE cleanup so it can use all snapshots)
-                AnalyticsService.compute_daily_analytics(filter_instance, analytics_date=today)
+                AnalyticsService.compute_daily_analytics(filter_instance, yesterday_snapshots, hourly_snapshots, today_snapshots, analytics_date=today)
                 logger.info(f"✓ Analytics computed for {filter_instance.name}")
                 
-                # Cleanup: Remove hourly snapshots, keep only latest 9 PM snapshots
-                # Delete all snapshots of tickets that had hourly snapshots
-                if hourly_ticket_ids:
-                    deleted_count = TicketSnapshot.objects.filter(
+                # Cleanup: Bulk delete hourly snapshots, keep only the final 9 PM batch
+                # hourly_snapshots cache already populated by compute_daily_analytics — no extra DB call
+                if hourly_snapshots:
+                    deleted_count, _ = TicketSnapshot.objects.filter(
                         filter=filter_instance,
-                        created_at__date=today,
-                        ticket_id__in=hourly_ticket_ids
-                    ).exclude(
-                        # Keep only the latest snapshot for each ticket (from 9 PM batch)
-                        id__in=TicketSnapshot.objects.filter(
-                            filter=filter_instance,
-                            created_at__date=today,
-                            ticket_id__in=hourly_ticket_ids
-                        ).values('ticket_id').annotate(max_id=Max('id')).values('max_id')
-                    ).count()
-                    
-                    TicketSnapshot.objects.filter(
-                        filter=filter_instance,
-                        created_at__date=today,
-                        ticket_id__in=hourly_ticket_ids
-                    ).exclude(
-                        # Keep only the latest snapshot for each ticket (from 9 PM batch)
-                        id__in=TicketSnapshot.objects.filter(
-                            filter=filter_instance,
-                            created_at__date=today,
-                            ticket_id__in=hourly_ticket_ids
-                        ).values('ticket_id').annotate(max_id=Max('id')).values('max_id')
+                        snapshot_date=today,
+                        created_at__lt=today_first_snapshot.created_at
                     ).delete()
-                    logger.info(f"✓ Deleted {deleted_count} hourly snapshots for new tickets: {list(hourly_ticket_ids)}")
-                
-                # Cleanup: Remove Done/Resolved tickets from final 9 PM snapshot
-                # Only keep active tickets (status != 'Done')
-                done_tickets = TicketSnapshot.objects.filter(
-                    filter=filter_instance,
-                    created_at__date=today,
-                    status='Done'
-                )
-                done_ticket_ids = set(done_tickets.values_list('ticket_id', flat=True))
-                
-                if done_ticket_ids:
-                    deleted_done_count = done_tickets.count()
-                    done_tickets.delete()
-                    logger.info(f"✓ Cleaned up {deleted_done_count} Done ticket snapshots from 9 PM: {list(done_ticket_ids)}")
-                else:
-                    logger.info("No Done tickets to cleanup")
-                
-                # Cleanup: Remove tickets no longer in current Jira filter
-                # Get current tickets from Jira filter
-                current_jira_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
-                current_ticket_ids = set(t['ticket_id'] for t in current_jira_tickets)
-                
-                # Find snapshots for tickets not in current filter
-                snapshot_ticket_ids = set(
-                    TicketSnapshot.objects.filter(
-                        filter=filter_instance,
-                        created_at__date=today
-                    ).values_list('ticket_id', flat=True).distinct()
-                )
-                
-                removed_from_filter = snapshot_ticket_ids - current_ticket_ids
-                if removed_from_filter:
-                    deleted_removed_count = TicketSnapshot.objects.filter(
-                        filter=filter_instance,
-                        created_at__date=today,
-                        ticket_id__in=removed_from_filter
-                    ).count()
-                    
-                    TicketSnapshot.objects.filter(
-                        filter=filter_instance,
-                        created_at__date=today,
-                        ticket_id__in=removed_from_filter
-                    ).delete()
-                    logger.info(f"✓ Cleaned up {deleted_removed_count} tickets no longer in filter: {list(removed_from_filter)}")
-                else:
-                    logger.info("No tickets removed from filter")
-                
+                    logger.info(f"✓ Deleted {deleted_count} hourly snapshots for {filter_instance.name}")
                 # Generate markdown report
                 markdown_report = AnalyticsService.generate_markdown_report(filter_instance, analytics_date=today)
                 logger.info(f"✓ Markdown report generated for {filter_instance.name}")
@@ -480,7 +383,7 @@ This is an automated notification from TrackIt.
                 # Send report to Microsoft Teams (if configured)
                 if settings.TEAMS_WEBHOOK_URL:
                     try:
-                        from core.models import DailyAnalytics, SnapshotComparison
+                        from core.models import DailyAnalytics
                         from utils.teams_service import TeamsService
                         
                         analytics = DailyAnalytics.objects.filter(
@@ -488,12 +391,8 @@ This is an automated notification from TrackIt.
                             analytics_date=today
                         ).first()
                         
-                        comparison = SnapshotComparison.objects.filter(
-                            filter=filter_instance,
-                            comparison_date=today
-                        ).first()
                         
-                        if analytics and comparison:
+                        if analytics:
                             teams_service = TeamsService()
                             
                             # Extract top contributors and awaiting assignees from analytics
@@ -510,8 +409,8 @@ This is an automated notification from TrackIt.
                                 total_tickets=analytics.total_tickets,
                                 updated_count=analytics.updated_count,
                                 pending_count=analytics.missed_count,
-                                new_tickets=len(comparison.new_tickets or []),
-                                resolved_count=len(comparison.removed_tickets or []),
+                                new_tickets=len(analytics.analytics_data.get("new_tickets", [])),
+                                resolved_count=len(analytics.analytics_data.get("removed_tickets", [])),
                                 compliance=analytics.analytics_data.get('compliance_rate', 0),
                                 top_contributors=top_contributors,
                                 awaiting_assignees=analytics.no_update_assignees
@@ -551,7 +450,6 @@ This is an automated notification from TrackIt.
     
     except Exception as e:
         logger.error(f"Report job failed: {str(e)}")
-        return {'status': 'error', 'message': str(e)}
         return {'status': 'error', 'message': str(e)}
 
 
