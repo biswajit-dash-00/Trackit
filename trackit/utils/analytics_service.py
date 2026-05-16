@@ -1,8 +1,9 @@
 """Analytics Service for computing metrics and generating insights"""
 import logging
 import pytz
-from datetime import datetime, date, timedelta
+from datetime import date
 from django.utils import timezone
+from django.conf import settings
 from typing import Dict, Any, List
 from core.models import (
     TicketUpdate, 
@@ -44,6 +45,7 @@ class AnalyticsService:
             today_9pm_ids = set(today_dict.keys())
 
             # Today hourly: just need ticket_ids for set operations
+            today_hourly_dict = {s.ticket_id: s for s in hourly_snapshots}
             today_hourly_ids = set(s.ticket_id for s in hourly_snapshots)
 
             # --- Core ticket sets ---
@@ -52,7 +54,7 @@ class AnalyticsService:
             new_ticket_ids = (today_9pm_ids | today_hourly_ids) - yesterday_ids
 
             # RESOLVED: in yesterday 9PM, seen in today's hourly, but gone from today's 9PM
-            resolved_ticket_ids = (yesterday_ids - today_9pm_ids) & today_hourly_ids
+            resolved_ticket_ids = (yesterday_ids | today_hourly_ids) - today_9pm_ids
 
             # PENDING = tickets in today's 9PM (active right now)
             pending_count = len(today_9pm_ids)
@@ -61,7 +63,7 @@ class AnalyticsService:
             total_tickets = pending_count + len(resolved_ticket_ids)
 
             # --- ONE DB call for all today's updates ---
-            all_relevant_ids = list(today_9pm_ids | resolved_ticket_ids)
+            all_relevant_ids = list(today_9pm_ids)
             all_updates = list(
                 TicketUpdate.objects.filter(
                     ticket_id__in=all_relevant_ids,
@@ -71,13 +73,12 @@ class AnalyticsService:
             updated_ticket_ids = set(u['ticket_id'] for u in all_updates)
 
             # UPDATED = updates on currently active (9PM) tickets only
-            updated_count = len(updated_ticket_ids & today_9pm_ids)
+            updated_count = len(updated_ticket_ids)
 
             # AWAITING UPDATE = in today's 9PM with no update logged
             awaiting_ticket_ids = today_9pm_ids - updated_ticket_ids
 
             # --- Assignee metrics (all in-memory) ---
-
             # Group today's 9PM tickets by assignee
             assignee_9pm_tickets: Dict[str, set] = {}
             for ticket_id, snapshot in today_dict.items():
@@ -87,11 +88,17 @@ class AnalyticsService:
                 assignee_9pm_tickets[assignee].add(ticket_id)
 
             # Resolved tickets per assignee (look up in yesterday_dict)
-            resolved_by_assignee: Dict[str, int] = {}
+            resolved_tickets_by_assignee: Dict[str, List] = {}
             for ticket_id in resolved_ticket_ids:
                 if ticket_id in yesterday_dict:
                     assignee = yesterday_dict[ticket_id].assignee
-                    resolved_by_assignee[assignee] = resolved_by_assignee.get(assignee, 0) + 1
+                elif ticket_id in today_hourly_dict:
+                    assignee = today_hourly_dict[ticket_id].assignee
+                else:
+                    continue
+                if assignee not in resolved_tickets_by_assignee:
+                    resolved_tickets_by_assignee[assignee] = []
+                resolved_tickets_by_assignee[assignee].append(ticket_id)
 
             # Awaiting updates per assignee (for report section)
             awaiting_by_assignee: Dict[str, List] = {}
@@ -108,11 +115,11 @@ class AnalyticsService:
             # Build full assignee_metrics
             assignee_metrics: Dict[str, Any] = {}
             no_update_assignees = []
-            all_assignees = set(assignee_9pm_tickets.keys()) | set(resolved_by_assignee.keys())
+            all_assignees = set(assignee_9pm_tickets.keys()) | set(resolved_tickets_by_assignee.keys())
 
             for assignee in all_assignees:
                 active_tickets = assignee_9pm_tickets.get(assignee, set())
-                resolved_for_assignee = resolved_by_assignee.get(assignee, 0)
+                resolved_for_assignee = len(resolved_tickets_by_assignee.get(assignee, []))
                 has_update = assignee in assignees_with_updates
 
                 assignee_metrics[assignee] = {
@@ -167,7 +174,7 @@ class AnalyticsService:
                     'resolved_count': len(resolved_ticket_ids),
                     'assignee_metrics': assignee_metrics,
                     'no_update_assignees': no_update_assignees,
-                    'resolved_by_assignee': resolved_by_assignee,
+                    'resolved_by_assignee': resolved_tickets_by_assignee,
                     'analytics_data': analytics_data,
                 }
             )
@@ -222,20 +229,16 @@ class AnalyticsService:
             
             # Overview section with emojis and markdown
             compliance = analytics.analytics_data.get('compliance_rate', 0)
-            # Fresh total = active tickets only (not resolved)
-            fresh_total = analytics.total_tickets
-            # Total all = active + resolved tickets
-            total_all_tickets = analytics.total_tickets + len(comparison_result['resolved_tickets'])
-            # Pending = active tickets - updated
-            pending_count = fresh_total - analytics.updated_count
+            total_all_tickets = analytics.total_tickets
+            pending_count = analytics.analytics_data.get("pending_count")
             
             report_lines.append("## 📊 OVERVIEW")
             report_lines.append("")
             report_lines.append(f"- ✅ **Total Tickets:** {total_all_tickets}")
             report_lines.append(f"- 🟢 **Updated:** {analytics.updated_count}")
             report_lines.append(f"- 🟡 **Pending:** {pending_count}")
-            report_lines.append(f"- 🆕 **New Today:** {len(comparison_result['new_tickets'])}")
-            report_lines.append(f"- ✔️ **Resolved:** {len(comparison_result['resolved_tickets'])}")
+            report_lines.append(f"- 🆕 **New Today:** {analytics.analytics_data.get('new_tickets_count')}")
+            report_lines.append(f"- ✔️ **Resolved:** {analytics.resolved_count}")
             report_lines.append(f"- 🎯 **Compliance:** {compliance:.0f}%")
             report_lines.append("")
             
@@ -284,18 +287,21 @@ class AnalyticsService:
                     report_lines.append(f"- 🚩 {assignee}: {tickets_str} ({len(unique_tickets)} tickets)")
                 report_lines.append("")
             
-            # New tickets section - removed (already shown with 🆕 in detailed table)
-            # Status changes section - removed for cleaner report
-            
-            # Resolved/Moved tickets section
-            if comparison_result and comparison_result['resolved_tickets']:
+            # Resolved/Moved tickets section — grouped by assignee, truncated at 3
+            resolved_tickets_by_assignee = analytics.analytics_data.get('resolved_tickets_by_assignee', {})
+            if resolved_tickets_by_assignee:
                 report_lines.append("---")
                 report_lines.append("")
                 report_lines.append("## ✅ RESOLVED/MOVED")
                 report_lines.append("")
-                
-                for ticket_id in comparison_result['resolved_tickets']:
-                    report_lines.append(f"- {ticket_id}")
+
+                for assignee in sorted(resolved_tickets_by_assignee.keys()):
+                    unique_tickets = sorted(set(resolved_tickets_by_assignee[assignee]))
+                    if len(unique_tickets) > 3:
+                        tickets_str = ", ".join(unique_tickets[:3]) + " ..."
+                    else:
+                        tickets_str = ", ".join(unique_tickets)
+                    report_lines.append(f"- ✅ {assignee}: {tickets_str} ({len(unique_tickets)} tickets)")
                 report_lines.append("")
             
             # Build markdown table with ticket details (including resolved tickets from intermediate snapshots)
@@ -305,12 +311,12 @@ class AnalyticsService:
             report_lines.append("")
             
             # Build detailed ticket table from pre-computed analytics_data (no snapshot re-fetch)
+            jira_base_url = getattr(settings, 'JIRA_BASE_URL', '').rstrip('/')
             today_tickets = analytics.analytics_data.get('today_tickets', {})
             new_ticket_ids = set(comparison_result['new_tickets'])
-            resolved_ticket_ids = set(comparison_result['resolved_tickets'])
 
             # ONE batched DB call for all updates today
-            active_ticket_ids = [tid for tid in today_tickets if tid not in resolved_ticket_ids]
+            active_ticket_ids = [tid for tid in today_tickets]
             all_updates_qs = TicketUpdate.objects.filter(
                 ticket_id__in=active_ticket_ids,
                 submitted_at__date=analytics_date
@@ -328,7 +334,7 @@ class AnalyticsService:
 
                 # Sort by assignee name then ticket_id (all in-memory)
                 sorted_tickets = sorted(
-                    [(tid, info) for tid, info in today_tickets.items() if tid not in resolved_ticket_ids],
+                    [(tid, info) for tid, info in today_tickets.items()],
                     key=lambda x: (x[1]['assignee'].lower(), x[0])
                 )
 
@@ -337,7 +343,8 @@ class AnalyticsService:
                     eta = upd['eta'] if upd and upd['eta'] else "—"
                     note = upd['update_note'] if upd and upd['update_note'] else "—"
                     blockers = upd['blockers'] if upd and upd['blockers'] else "—"
-                    ticket_label = f"{ticket_id} 🆕" if ticket_id in new_ticket_ids else ticket_id
+                    ticket_link = f"[{ticket_id}]({jira_base_url}/browse/{ticket_id})"
+                    ticket_label = f"{ticket_link} 🆕" if ticket_id in new_ticket_ids else ticket_link
                     report_lines.append(
                         f"| {ticket_label} | {info['assignee']} | {info['priority']} "
                         f"| {info['status']} | {eta} | {note} | {blockers} |"

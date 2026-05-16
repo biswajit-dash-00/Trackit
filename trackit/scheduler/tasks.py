@@ -335,7 +335,7 @@ This is an automated notification from TrackIt.
                 today_snapshots = TicketSnapshot.objects.filter(
                     filter=filter_instance,
                     snapshot_date=today,
-                    created_at__gte=today_first_snapshot.created_at - timedelta(seconds=30)
+                    created_at__gte=today_first_snapshot.created_at - timedelta(seconds=3)
 
                 ).order_by('-created_at')
                 
