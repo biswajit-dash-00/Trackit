@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} - TrackIt{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Header -->
+            <div class="mb-4">
+                <h1 class="display-5 fw-bold">{{ page_title }}</h1>
+                <p class="text-muted">
+                    {% if is_create %}
+                        Set up a new Jira filter to start tracking tickets
+                    {% else %}
+                        Update filter configuration
+                    {% endif %}
+                </p>
+            </div>
+
+            <!-- Form Card -->
+            <div class="card shadow-lg border-0 rounded-lg">
+                <div class="card-body p-5">
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+
+                        <!-- Filter Name -->
+                        <div class="mb-4">
+                            <label for="{{ form.name.id_for_label }}" class="form-label fw-semibold">
+                                📋 Filter Name <span class="text-danger">*</span>
+                            </label>
+                            {{ form.name }}
+                            {% if form.name.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.name.errors.0 }}
+                                </div>
+                            {% endif %}
+                            <small class="text-muted d-block mt-2">
+                                A descriptive name for this Jira filter (e.g., "Backend Sprint", "Bug Tracker")
+                            </small>
+                        </div>
+
+                        <!-- Jira Filter ID -->
+                        <div class="mb-4">
+                            <label for="{{ form.jira_filter_id.id_for_label }}" class="form-label fw-semibold">
+                                🔗 Jira Filter ID <span class="text-danger">*</span>
+                            </label>
+                            {{ form.jira_filter_id }}
+                            {% if form.jira_filter_id.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.jira_filter_id.errors.0 }}
+                                </div>
+                            {% endif %}
+                            <small class="text-muted d-block mt-2">
+                                Find your filter ID in Jira (Filters → Your Filters → Share → copy the ID from the URL)
+                            </small>
+                        </div>
+
+                        <!-- Admin Email -->
+                        <div class="mb-4">
+                            <label for="{{ form.admin_email.id_for_label }}" class="form-label fw-semibold">
+                                ✉️ Admin Email <span class="text-danger">*</span>
+                            </label>
+                            {{ form.admin_email }}
+                            {% if form.admin_email.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.admin_email.errors.0 }}
+                                </div>
+                            {% endif %}
+                            <small class="text-muted d-block mt-2">
+                                Receive daily reports and notifications for this filter
+                            </small>
+                        </div>
+
+                        <!-- Active Status -->
+                        <div class="mb-4">
+                            <div class="form-check">
+                                {{ form.active }}
+                                <label for="{{ form.active.id_for_label }}" class="form-check-label">
+                                    <strong>✅ Active</strong> — Enable daily tracking and reporting
+                                </label>
+                                {% if form.active.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {{ form.active.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <small class="text-muted d-block mt-2">
+                                Inactive filters will not be tracked or reported
+                            </small>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="d-flex gap-3 mt-5">
+                            <button type="submit" class="btn btn-primary btn-lg flex-grow-1">
+                                <i class="fas fa-save me-2"></i>
+                                {% if is_create %}Save New Filter{% else %}Update Filter{% endif %}
+                            </button>
+                            <a href="{% url 'admin_dashboard' %}" class="btn btn-outline-secondary btn-lg">
+                                <i class="fas fa-times me-2"></i>Cancel
+                            </a>
+                        </div>
+
+                        {% if not is_create %}
+                            <hr class="my-4">
+                            <div class="alert alert-info" role="alert">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Tip:</strong> Changing the filter ID will start tracking a different Jira filter.
+                                Historical data for the old filter is retained.
+                            </div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="mt-5 p-4 bg-light rounded-lg">
+                <h5 class="fw-bold mb-3">📚 How to find your Jira Filter ID</h5>
+                <ol class="mb-0">
+                    <li>Log in to your Jira instance</li>
+                    <li>Click <strong>Filters</strong> → <strong>Your Filters</strong></li>
+                    <li>Click on the filter you want to track</li>
+                    <li>Look at the URL: <code>...filter=<span class="text-primary"><strong>12345</strong></span></code></li>
+                    <li>Copy the number and paste it above</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .form-control, .form-check-input {
+        border-radius: 0.5rem;
+        border: 1px solid #dee2e6;
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .form-control:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    
+    .btn-lg {
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: 0.5rem;
+    }
+    
+    .form-label {
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+    
+    .card {
+        border-radius: 1rem;
+    }
+</style>
+{% endblock %}

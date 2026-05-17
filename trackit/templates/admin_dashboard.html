@@ -5,7 +5,7 @@
 
 {% block content %}
 <h1>📊 Admin Dashboard</h1>
-<p style="color: #666; margin-top: 10px;">Manage your Jira filters and view analytics</p>
+<p style="color: #666; margin-top: 10px; margin-bottom: 10px;">Manage your Jira filters and view analytics</p>
 
 <div class="stats">
     <div class="stat-box">
@@ -23,7 +23,7 @@
 </div>
 
 <div style="margin-bottom: 30px;">
-    <a href="/api/v1/filters/" class="btn btn-primary">+ Create New Filter</a>
+    <a href="{% url 'filter_create' %}" class="btn btn-primary">+ Create New Filter</a>
 </div>
 
 <h2>Your Filters</h2>
@@ -56,12 +56,12 @@
             </table>
             
             <div style="display: flex; gap: 10px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
-                <a href="/filters/{{ filter.id }}/" class="btn btn-secondary">View Details</a>
-                <a href="/api/v1/filters/{{ filter.id }}/" class="btn btn-secondary">Edit</a>
+                <a href="{% url 'filter_detail' filter.id %}" class="btn btn-secondary">View Details</a>
+                <a href="{% url 'filter_edit' filter.id %}" class="btn btn-secondary">Edit</a>
                 
                 {% with report=latest_reports|dict_lookup:filter.id %}
                     {% if report %}
-                    <a href="/reports/{{ report.id }}/" class="btn btn-secondary">
+                    <a href="{% url 'report_detail' report.id %}" class="btn btn-secondary">
                         Latest Report
                     </a>
                     {% endif %}

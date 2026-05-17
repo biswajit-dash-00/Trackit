@@ -2,14 +2,16 @@
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
-from django.views.generic import TemplateView, ListView
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.utils import timezone
 from django.conf import settings
+from django.urls import reverse_lazy
 from core.models import (
     Filter, TicketSnapshot, EmailToken, TicketUpdate, DailyReport
 )
+from core.forms import FilterForm
 from utils.token_service import TokenService
 
 logger = logging.getLogger(__name__)
@@ -200,6 +202,46 @@ class UpdatePageView(View):
         else:
             ip = request.META.get('REMOTE_ADDR')
         return ip
+
+
+class FilterCreateView(LoginRequiredMixin, CreateView):
+    """Create a new filter with beautiful form"""
+    model = Filter
+    form_class = FilterForm
+    template_name = 'filter_form.html'
+    login_url = '/admin/login/'
+    success_url = reverse_lazy('admin_dashboard')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_title'] = 'Create New Filter'
+        context['is_create'] = True
+        return context
+    
+    def form_valid(self, form):
+        logger.info(f"Creating new filter: {form.cleaned_data.get('name')}")
+        return super().form_valid(form)
+
+
+class FilterEditView(LoginRequiredMixin, UpdateView):
+    """Edit an existing filter with beautiful form"""
+    model = Filter
+    form_class = FilterForm
+    template_name = 'filter_form.html'
+    login_url = '/admin/login/'
+    success_url = reverse_lazy('admin_dashboard')
+    pk_url_kwarg = 'filter_id'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_title'] = f'Edit Filter: {self.object.name}'
+        context['is_create'] = False
+        context['filter_id'] = self.object.id
+        return context
+    
+    def form_valid(self, form):
+        logger.info(f"Updated filter: {form.cleaned_data.get('name')}")
+        return super().form_valid(form)
 
 
 class AdminDashboardView(LoginRequiredMixin, TemplateView):

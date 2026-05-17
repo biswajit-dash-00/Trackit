@@ -35,7 +35,7 @@ services:
       - "8000:8000"
     env_file:
       - .env
-    # entrypoint: tail -f /dev/null
+    entrypoint: tail -f /dev/null
     volumes:
       - ./:/app/
     networks:

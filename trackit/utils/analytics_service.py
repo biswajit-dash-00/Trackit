@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.conf import settings
 from typing import Dict, Any, List
 from core.models import (
-    TicketUpdate, 
+    TicketUpdate,
     DailyAnalytics, DailyReport
 )
 logger = logging.getLogger(__name__)
@@ -347,10 +347,9 @@ class AnalyticsService:
                     ticket_link = f"[{ticket_id}]({jira_base_url}/browse/{ticket_id})"
                     ticket_label = f"{ticket_link} 🆕" if ticket_id in new_ticket_ids else ticket_link
                     age = info.get('age', 1)
-                    pending_from = f"{age}d" if age > 2 else "—"
                     report_lines.append(
                         f"| {ticket_label} | {info['assignee']} | {info['priority']} "
-                        f"| {info['status']} | {eta} | {note} | {blockers} | {pending_from} |"
+                        f"| {info['status']} | {eta} | {note} | {blockers} | {age}d |"
                     )
             else:
                 report_lines.append("No active tickets in filter.")
@@ -358,16 +357,40 @@ class AnalyticsService:
             report_lines.append("")
             report_lines.append("---")
             report_lines.append("")
-            
+
+            # Convert to markdown (before AI so the full report is sent)
+            markdown_report = "\n".join(report_lines)
+
+            # AI summary — inserted above the generated timestamp when configured
+            try:
+                from utils.ai_service import AIService
+                import re
+                ai_summary = AIService.summarize(markdown_report)
+                if ai_summary:
+                    # Split on every bullet or newline so each item is its own report line.
+                    # A blank line after each entry forces a proper paragraph break in all
+                    # markdown renderers (Teams, email, web) instead of collapsing to a space.
+                    summary_lines = [
+                        l.strip() for l in re.split(r'\n+|(?<=[^\n])(?=•)', ai_summary)
+                        if l.strip()
+                    ]
+                    for line in summary_lines:
+                        report_lines.append(line)
+                        report_lines.append("")  # blank line = paragraph break
+                    report_lines.append("---")
+                    report_lines.append("")
+            except Exception as ai_err:
+                logger.warning(f"AI summary skipped: {ai_err}")
+
             # Get IST timezone
             ist = pytz.timezone('Asia/Kolkata')
             generated_time = timezone.now().astimezone(ist).strftime('%H:%M')
-            
+
             report_lines.append(f"🕒 Generated: {analytics_date.strftime('%d %B %Y')} at {generated_time} IST")
-            
-            # Convert to markdown
+
+            # Rebuild markdown with AI summary + timestamp in correct order
             markdown_report = "\n".join(report_lines)
-            
+
             # Save report
             DailyReport.objects.update_or_create(
                 filter=filter_instance,
@@ -376,7 +399,7 @@ class AnalyticsService:
                     'markdown_content': markdown_report,
                 }
             )
-            
+
             return markdown_report
         
         except Exception as e:
