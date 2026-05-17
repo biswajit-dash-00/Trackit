@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trackit
+  namespace: nimbus-dev
+  labels:
+    app: trackit
+    version: v1
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: trackit
+
+  template:
+    metadata:
+      labels:
+        app: trackit
+        version: v1
+
+    spec:
+      containers:
+        - name: trackit
+          image: 741448940918.dkr.ecr.ap-south-1.amazonaws.com/nimbus-uno-dev:trackit-03
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8000
+              name: http
+
+          envFrom:
+            - configMapRef:
+                name: trackit-config
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          livenessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+      imagePullSecrets:
+        - name: ecr-secret

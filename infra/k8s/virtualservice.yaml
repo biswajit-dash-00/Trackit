@@ -1,0 +1,22 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: trackit-vs
+  namespace: nimbus-dev
+spec:
+  hosts:
+  - trackit.nimbus-dev.svc.cluster.local
+  - trackit.dev.nimbus.solyticspartners.com
+  http:
+  - match:
+    - uri:
+        prefix: "/"
+    route:
+    - destination:
+        host: trackit-service
+        port:
+          number: 80
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s

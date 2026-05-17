@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trackit-config
+  namespace: nimbus-dev
+  labels:
+    app: trackit
+data:
+  # Django Configuration
+  DEBUG: "False"
+  ALLOWED_HOSTS: "localhost,127.0.0.1,trackit.nimbus-dev.svc.cluster.local,trackit.dev.nimbus.solyticspartners.com"
+  
+  # Database Configuration
+  DB_ENGINE: "django.db.backends.postgresql"
+  DB_NAME: "trackit"
+  DB_USER: "postgres"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  
+  # Application Settings
+  LOG_LEVEL: "INFO"
+  ENVIRONMENT: "production"
+  
+  # Email Configuration
+  EMAIL_BACKEND: "django.core.mail.backends.smtp.EmailBackend"
+  EMAIL_HOST: "smtp.gmail.com"
+  EMAIL_PORT: "587"
+  EMAIL_USE_TLS: "True"
+  
+  # Celery Configuration
+  CELERY_BROKER_URL: "redis://redis-service:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis-service:6379/0"
+  CELERY_TASK_SERIALIZER: "json"
+  CELERY_ACCEPT_CONTENT: "json"
+  
+  # Add more variables as needed from your .env file

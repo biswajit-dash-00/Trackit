@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: trackit-service
+  namespace: nimbus-dev
+  labels:
+    app: trackit
+spec:
+  type: ClusterIP
+  selector:
+    app: trackit
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
