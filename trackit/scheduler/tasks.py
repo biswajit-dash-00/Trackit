@@ -328,7 +328,7 @@ This is an automated notification from TrackIt.
                 
                 # Create today's snapshot (final state at 9 PM today)
                 jira_service = JiraService()
-                today_count, today_first_snapshot = SnapshotService.create_snapshot(filter_instance, jira_service)
+                today_count, today_first_snapshot = SnapshotService.create_snapshot(filter_instance, jira_service, yesterday_snapshots=yesterday_snapshots)
                 logger.info(f"✓ Created today's snapshot with {today_count} tickets for {filter_instance.name}")
                 
                 # Get today's snapshot just created

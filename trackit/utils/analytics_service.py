@@ -157,6 +157,7 @@ class AnalyticsService:
                         'assignee': s.assignee,
                         'priority': s.priority,
                         'status': s.status,
+                        'age': s.snapshot_json.get("age",1),
                     }
                     for ticket_id, s in today_dict.items()
                 },
@@ -288,7 +289,7 @@ class AnalyticsService:
                 report_lines.append("")
             
             # Resolved/Moved tickets section — grouped by assignee, truncated at 3
-            resolved_tickets_by_assignee = analytics.analytics_data.get('resolved_tickets_by_assignee', {})
+            resolved_tickets_by_assignee = analytics.resolved_by_assignee or {}
             if resolved_tickets_by_assignee:
                 report_lines.append("---")
                 report_lines.append("")
@@ -329,8 +330,8 @@ class AnalyticsService:
                     update_lookup[upd['ticket_id']] = upd
 
             if today_tickets:
-                report_lines.append("| Ticket | Assignee | Priority | Status | ETA | Update | Blockers |")
-                report_lines.append("|--------|----------|----------|--------|-----|--------|----------|")
+                report_lines.append("| Ticket | Assignee | Priority | Status | ETA | Update | Blockers | Pending From |")
+                report_lines.append("|--------|----------|----------|--------|-----|--------|----------|--------------|")
 
                 # Sort by assignee name then ticket_id (all in-memory)
                 sorted_tickets = sorted(
@@ -345,9 +346,11 @@ class AnalyticsService:
                     blockers = upd['blockers'] if upd and upd['blockers'] else "—"
                     ticket_link = f"[{ticket_id}]({jira_base_url}/browse/{ticket_id})"
                     ticket_label = f"{ticket_link} 🆕" if ticket_id in new_ticket_ids else ticket_link
+                    age = info.get('age', 1)
+                    pending_from = f"{age}d" if age > 2 else "—"
                     report_lines.append(
                         f"| {ticket_label} | {info['assignee']} | {info['priority']} "
-                        f"| {info['status']} | {eta} | {note} | {blockers} |"
+                        f"| {info['status']} | {eta} | {note} | {blockers} | {pending_from} |"
                     )
             else:
                 report_lines.append("No active tickets in filter.")
