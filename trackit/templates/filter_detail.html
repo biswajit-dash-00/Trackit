@@ -66,30 +66,6 @@
                 </td>
             </tr>
             <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Snapshot Time</strong></td>
-                <td style="padding: 14px 12px;">
-                    {% if filter.snapshot_time %}
-                        <strong style="color: #667eea; font-size: 15px;">
-                            ⏰ {{ filter.snapshot_time|date:"H:i" }} UTC
-                        </strong>
-                    {% else %}
-                        <em style="color: #999;">Default: 19:00 UTC (7 PM)</em>
-                    {% endif %}
-                </td>
-            </tr>
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Report Time</strong></td>
-                <td style="padding: 14px 12px;">
-                    {% if filter.report_time %}
-                        <strong style="color: #667eea; font-size: 15px;">
-                            ⏰ {{ filter.report_time|date:"H:i" }} UTC
-                        </strong>
-                    {% else %}
-                        <em style="color: #999;">Default: 21:00 UTC (9 PM)</em>
-                    {% endif %}
-                </td>
-            </tr>
-            <tr style="border-bottom: 1px solid #eee;">
                 <td style="padding: 14px 12px; background: #f9f9f9;"><strong>Admin Email</strong></td>
                 <td style="padding: 14px 12px;">
                     {% if filter.admin_email %}
@@ -154,14 +130,7 @@
             📋 No reports generated yet
         </p>
         <p style="color: #666; margin: 10px 0 0 0; font-size: 14px;">
-            Reports are generated automatically at 
-            <strong>
-                {% if filter.report_time %}
-                    {{ filter.report_time|date:"H:i" }} UTC
-                {% else %}
-                    21:00 UTC (9 PM)
-                {% endif %}
-            </strong> daily.
+            Reports are generated automatically daily.
             Check back tomorrow or wait for the scheduled job to run.
         </p>
     </div>

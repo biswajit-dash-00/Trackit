@@ -9,16 +9,13 @@ from core.models import (
 
 @admin.register(Filter)
 class FilterAdmin(admin.ModelAdmin):
-    list_display = ('name', 'jira_filter_id', 'snapshot_time', 'report_time', 'active_status', 'created_at')
+    list_display = ('name', 'jira_filter_id', 'active_status', 'created_at')
     list_filter = ('active', 'created_at')
     search_fields = ('name', 'jira_filter_id', 'admin_email')
     readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
         ('Filter Information', {
             'fields': ('name', 'jira_filter_id', 'active')
-        }),
-        ('Schedule', {
-            'fields': ('snapshot_time', 'report_time')
         }),
         ('Contact', {
             'fields': ('admin_email',)
@@ -41,21 +38,17 @@ class TicketSnapshotAdmin(admin.ModelAdmin):
     list_display = ('ticket_id', 'filter', 'assignee', 'status_badge', 'priority_badge', 'snapshot_date')
     list_filter = ('filter', 'status', 'priority', 'snapshot_date')
     search_fields = ('ticket_id', 'assignee', 'title')
-    readonly_fields = ('created_at', 'snapshot_json')
+    readonly_fields = ('created_at',)
     date_hierarchy = 'snapshot_date'
     fieldsets = (
         ('Ticket Details', {
-            'fields': ('filter', 'ticket_id', 'title', 'assignee')
+            'fields': ('filter', 'ticket_id', 'title', 'assignee', 'assignee_email')
         }),
         ('Status', {
             'fields': ('status', 'priority', 'updated')
         }),
         ('Snapshot', {
-            'fields': ('snapshot_date', 'created_at')
-        }),
-        ('Raw Data', {
-            'fields': ('snapshot_json',),
-            'classes': ('collapse',)
+            'fields': ('snapshot_date', 'age', 'created_at')
         }),
     )
     

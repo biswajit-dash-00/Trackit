@@ -59,7 +59,7 @@
                         <!-- Admin Email -->
                         <div class="mb-4">
                             <label for="{{ form.admin_email.id_for_label }}" class="form-label fw-semibold">
-                                ✉️ Admin Email <span class="text-danger">*</span>
+                                ✉️ Admin Email(s) <span class="text-danger">*</span>
                             </label>
                             {{ form.admin_email }}
                             {% if form.admin_email.errors %}
@@ -68,7 +68,9 @@
                                 </div>
                             {% endif %}
                             <small class="text-muted d-block mt-2">
-                                Receive daily reports and notifications for this filter
+                                Receive daily reports and notifications for this filter.<br>
+                                <strong>Multiple emails supported</strong> — separate with commas.<br>
+                                <span style="color:#667eea;">e.g. alice@company.com, bob@company.com</span>
                             </small>
                         </div>
 

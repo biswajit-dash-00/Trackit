@@ -10,7 +10,7 @@
         <div>
             <h3 style="margin: 0; color: #333;">{{ filter.name }}</h3>
             <p style="color: #999; font-size: 14px; margin-top: 5px;">
-                {{ assignee }} - {{ ticket_count }} tickets assigned
+                {{ assignee_name }} - {{ ticket_count }} tickets assigned
             </p>
         </div>
     </div>
@@ -63,8 +63,11 @@
                             id="eta_{{ ticket.ticket_id }}"
                             name="eta_{{ ticket.ticket_id }}"
                             placeholder="e.g., Tomorrow EOD, This week, Next sprint"
+                            maxlength="50"
+                            oninput="updateCounter(this)"
                             required
                         >
+                        <small class="char-counter" style="color:#999;float:right;">50 chars remaining</small>
                     </div>
                     
                     <div class="form-group">
@@ -73,8 +76,11 @@
                             id="update_{{ ticket.ticket_id }}"
                             name="update_{{ ticket.ticket_id }}"
                             placeholder="Describe what you've accomplished, what's in progress, and what's pending..."
+                            maxlength="50"
+                            oninput="updateCounter(this)"
                             required
                         ></textarea>
+                        <small class="char-counter" style="color:#999;float:right;">50 chars remaining</small>
                     </div>
                     
                     <div class="form-group">
@@ -83,7 +89,10 @@
                             id="blockers_{{ ticket.ticket_id }}"
                             name="blockers_{{ ticket.ticket_id }}"
                             placeholder="List any blockers, dependencies, or things we need to address..."
+                            maxlength="50"
+                            oninput="updateCounter(this)"
                         ></textarea>
+                        <small class="char-counter" style="color:#999;float:right;">50 chars remaining</small>
                     </div>
                 </div>
                 {% endfor %}
@@ -109,6 +118,15 @@
 </form>
 
 <script>
+function updateCounter(el) {
+    const remaining = 50 - el.value.length;
+    const counter = el.nextElementSibling;
+    if (counter && counter.classList.contains('char-counter')) {
+        counter.textContent = remaining + ' chars remaining';
+        counter.style.color = remaining <= 10 ? '#dc3545' : '#999';
+    }
+}
+
 function submitUpdates(event) {
     event.preventDefault();
     
@@ -130,6 +148,10 @@ function submitUpdates(event) {
         
         if (!eta || !updateNote) {
             alert(`Please fill in ETA and status for ${ticketId}`);
+            return false;
+        }
+        if (eta.length > 50 || updateNote.length > 50 || blockers.length > 50) {
+            alert(`All fields for ${ticketId} must be 50 characters or fewer.`);
             return false;
         }
         

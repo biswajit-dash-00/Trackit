@@ -25,9 +25,10 @@ class FilterForm(forms.ModelForm):
                 'placeholder': 'Your Jira filter ID (e.g., 10234)',
                 'required': True,
             }),
-            'admin_email': forms.EmailInput(attrs={
+            'admin_email': forms.Textarea(attrs={
                 'class': 'form-control',
-                'placeholder': 'Admin email for notifications',
+                'placeholder': 'e.g. alice@company.com, bob@company.com',
+                'rows': 2,
                 'required': True,
             }),
             'active': forms.CheckboxInput(attrs={
@@ -45,16 +46,19 @@ class FilterForm(forms.ModelForm):
         return jira_filter_id
     
     def clean_admin_email(self):
-        """Validate admin email"""
-        admin_email = self.cleaned_data.get('admin_email', '').strip().lower()
-        if not admin_email:
-            raise forms.ValidationError('Admin email is required.')
-        
-        # Check for duplicate emails (but allow current instance's email in edit mode)
-        existing = Filter.objects.filter(admin_email=admin_email)
-        if self.instance.pk:
-            existing = existing.exclude(pk=self.instance.pk)
-        if existing.exists():
-            raise forms.ValidationError(f'A filter with this admin email already exists.')
-        
-        return admin_email
+        """Validate one or more comma-separated admin emails"""
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        raw = self.cleaned_data.get('admin_email', '')
+        emails = [e.strip().lower() for e in raw.split(',') if e.strip()]
+        if not emails:
+            raise forms.ValidationError('At least one admin email is required.')
+        invalid = []
+        for email in emails:
+            try:
+                validate_email(email)
+            except DjangoValidationError:
+                invalid.append(email)
+        if invalid:
+            raise forms.ValidationError(f'Invalid email address(es): {", ".join(invalid)}')
+        return ', '.join(emails)

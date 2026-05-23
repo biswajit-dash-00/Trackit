@@ -30,7 +30,7 @@ class SnapshotService:
             yesterday_age_dict = {}
             if yesterday_snapshots is not None:
                 for s in yesterday_snapshots:
-                    yesterday_age_dict[s.ticket_id] = s.snapshot_json.get('age', 1) if isinstance(s.snapshot_json, dict) else 1
+                    yesterday_age_dict[s.ticket_id] = s.age
 
             # Fetch tickets from Jira
             tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
@@ -47,19 +47,18 @@ class SnapshotService:
                 # Compute age: carry forward yesterday's age + 1, or start at 1 for new tickets
                 yesterday_age = yesterday_age_dict.get(ticket['ticket_id'])
                 age = (yesterday_age + 1) if yesterday_age is not None else 1
-                ticket_json = dict(ticket)  # shallow copy to avoid mutating original
-                ticket_json['age'] = age
                 
                 snapshot = TicketSnapshot(
                     filter=filter_instance,
                     ticket_id=ticket['ticket_id'],
                     title=ticket['title'],
                     assignee=ticket['assignee'],
+                    assignee_email=ticket.get('assignee_email', ''),
                     status=ticket['status'],
                     priority=ticket.get('priority', 'Unknown'),
                     updated=datetime.fromisoformat(ticket['updated'].replace('Z', '+00:00')),
                     snapshot_date=timezone.now().date(),
-                    snapshot_json=ticket_json,
+                    age=age,
                 )
                 snapshots.append(snapshot)
                 snapshot_count += 1

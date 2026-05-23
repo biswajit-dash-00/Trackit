@@ -116,7 +116,7 @@ class JiraService:
                     'search/jql',
                     params={
                         'jql': jql,
-                        'fields': 'key,summary,status,assignee,emailAddress,priority,updated',
+                        'fields': 'key,summary,status,assignee,priority,updated',
                         'startAt': start_at,
                         'maxResults': max_results,
                     }
@@ -131,15 +131,20 @@ class JiraService:
                 
                 if start_at >= response.get('total', 0):
                     break
-            
+
             # Transform to required format
             tickets = []
             for issue in all_issues:
+                assignee_field = issue['fields'].get('assignee')
+                assignee_name  = assignee_field.get('displayName', 'Unassigned') if assignee_field else 'Unassigned'
+                assignee_email = (assignee_field.get('emailAddress') or '') if assignee_field else ''
+
                 ticket = {
                     'ticket_id': issue['key'],
                     'title': issue['fields'].get('summary', ''),
                     'status': issue['fields']['status']['name'],
-                    'assignee': issue['fields']['assignee']['emailAddress'] if issue['fields'].get('assignee') else 'Unassigned',
+                    'assignee': assignee_name,
+                    'assignee_email': assignee_email,
                     'priority': issue['fields']['priority']['name'] if issue['fields'].get('priority') else 'Unknown',
                     'updated': issue['fields']['updated'],
                 }

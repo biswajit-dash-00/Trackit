@@ -7,8 +7,8 @@ class FilterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Filter
         fields = [
-            'id', 'name', 'jira_filter_id', 'snapshot_time',
-            'report_time', 'admin_email', 'active', 'created_at', 'updated_at'
+            'id', 'name', 'jira_filter_id',
+            'admin_email', 'active', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -17,8 +17,8 @@ class TicketSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
         model = TicketSnapshot
         fields = [
-            'id', 'filter', 'ticket_id', 'title', 'assignee',
-            'status', 'priority', 'updated', 'snapshot_date'
+            'id', 'filter', 'ticket_id', 'title', 'assignee', 'assignee_email',
+            'status', 'priority', 'updated', 'snapshot_date', 'age'
         ]
 
 

@@ -7,10 +7,12 @@ class Filter(models.Model):
     """Jira Filter Configuration"""
     name = models.CharField(max_length=255)
     jira_filter_id = models.CharField(max_length=255)
-    snapshot_time = models.TimeField(help_text="Time to take snapshot (HH:MM format)")
-    report_time = models.TimeField(help_text="Time to generate and send report (HH:MM format)")
-    admin_email = models.EmailField()
+    admin_email = models.TextField(help_text='One or more admin emails, comma-separated')
     active = models.BooleanField(default=True)
+
+    def get_admin_emails(self):
+        """Return list of stripped, non-empty admin email addresses."""
+        return [e.strip() for e in self.admin_email.split(',') if e.strip()]
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -32,7 +34,8 @@ class TicketSnapshot(models.Model):
     priority = models.CharField(max_length=50, default='Medium')
     updated = models.DateTimeField()
     snapshot_date = models.DateField()
-    snapshot_json = models.JSONField(default=dict)
+    age = models.IntegerField(default=1)
+    assignee_email = models.CharField(max_length=255, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

@@ -85,11 +85,12 @@ def hourly_snapshot_job():
                             ticket_id=ticket['ticket_id'],
                             title=ticket['title'],
                             assignee=ticket['assignee'],
+                            assignee_email=ticket.get('assignee_email', ''),
                             status=ticket['status'],
                             priority=ticket.get('priority', 'Unknown'),
                             updated=datetime.fromisoformat(ticket['updated'].replace('Z', '+00:00')),
                             snapshot_date=timezone.now().date(),
-                            snapshot_json=ticket,
+                            age=1,
                         )
                         new_snapshots.append(snapshot)
                 
@@ -139,28 +140,33 @@ def reminder_job():
                     logger.warning(f"No current tickets found for filter {filter_instance.name}")
                     continue
                 
-                # Group tickets by assignee
+                # Group tickets by assignee_email (skip if no email)
                 assignees_tickets = {}
                 for ticket in current_tickets:
-                    assignee = ticket['assignee']
-                    if assignee not in assignees_tickets:
-                        assignees_tickets[assignee] = []
-                    assignees_tickets[assignee].append(ticket)
+                    email = ticket.get('assignee_email', '')
+                    if not email:
+                        logger.info(f"Skipping {ticket['assignee']}: no email address")
+                        continue
+                    if email not in assignees_tickets:
+                        assignees_tickets[email] = {'name': ticket['assignee'], 'tickets': []}
+                    assignees_tickets[email]['tickets'].append(ticket)
                 
-                logger.info(f"Filter {filter_instance.name}: Found {len(assignees_tickets)} assignees with tickets")
+                logger.info(f"Filter {filter_instance.name}: Found {len(assignees_tickets)} assignees with email")
                 
                 # Track sent emails to avoid duplicates
                 sent_emails = set()
                 
-                for assignee, tickets in assignees_tickets.items():
+                for assignee_email, data in assignees_tickets.items():
+                    assignee_name = data['name']
+                    tickets = data['tickets']
                     # Skip if already sent email to this assignee
-                    if assignee in sent_emails:
-                        logger.info(f"Skipping duplicate email for {assignee}")
+                    if assignee_email in sent_emails:
+                        logger.info(f"Skipping duplicate email for {assignee_email}")
                         continue
                     
                     try:
                         ticket_count = len(tickets)
-                        logger.info(f"Assignee {assignee}: {ticket_count} tickets")
+                        logger.info(f"Assignee {assignee_name} <{assignee_email}>: {ticket_count} tickets")
                         
                         if ticket_count == 0:
                             continue
@@ -178,7 +184,7 @@ def reminder_job():
                         
                         # Generate SINGLE token for this assignee
                         from utils.token_service import TokenService
-                        token = TokenService.generate_token(filter_instance.id, assignee)
+                        token = TokenService.generate_token(filter_instance.id, assignee_email)
                         
                         # Save token - delete old ones first to avoid duplicates
                         from datetime import timedelta
@@ -186,31 +192,31 @@ def reminder_job():
                         
                         # Delete any stale tokens for this assignee/filter to avoid duplicates
                         old_tokens = EmailToken.objects.filter(
-                            assignee_email=assignee,
+                            assignee_email=assignee_email,
                             filter=filter_instance
                         )
                         old_count = old_tokens.count()
                         if old_count > 0:
                             old_tokens.delete()
-                            logger.info(f"Deleted {old_count} old tokens for {assignee}")
+                            logger.info(f"Deleted {old_count} old tokens for {assignee_email}")
                         
                         # Create fresh token
                         email_token = EmailToken.objects.create(
-                            assignee_email=assignee,
+                            assignee_email=assignee_email,
                             token=token,
                             filter=filter_instance,
                             expires_at=timezone.now() + timedelta(hours=15),
                         )
-                        logger.info(f"Created token for {assignee}: {token[:10]}...")
+                        logger.info(f"Created token for {assignee_email}: {token[:10]}...")
                         
                         # Build update link
                         update_link = f"{os.environ.get('UI_DOMAIN','http://localhost:8000')}/update/{token}"
                         
                         # Send ONE consolidated email with ALL CURRENT tickets
-                        logger.info(f"Sending reminder email to {assignee} with {ticket_count} tickets")
+                        logger.info(f"Sending reminder email to {assignee_name} <{assignee_email}> with {ticket_count} tickets")
                         success = EmailService.send_reminder_email(
-                            assignee_name=assignee,
-                            assignee_email=assignee,
+                            assignee_name=assignee_name,
+                            assignee_email=assignee_email,
                             tickets=ticket_list,
                             update_link=update_link,
                             filter_name=filter_instance.name
@@ -218,13 +224,13 @@ def reminder_job():
                         
                         if success:
                             email_count += 1
-                            sent_emails.add(assignee)  # Mark as sent
-                            logger.info(f"✓ Reminder email sent to {assignee}")
+                            sent_emails.add(assignee_email)  # Mark as sent
+                            logger.info(f"✓ Reminder email sent to {assignee_name} <{assignee_email}>")
                         else:
-                            logger.error(f"✗ Reminder email failed for {assignee}")
+                            logger.error(f"✗ Reminder email failed for {assignee_email}")
                     
                     except Exception as e:
-                        logger.error(f"Failed to send reminder to {assignee}: {str(e)}")
+                        logger.error(f"Failed to send reminder to {assignee_email}: {str(e)}")
                         import traceback
                         traceback.print_exc()
                         continue
@@ -470,3 +476,72 @@ def cleanup_expired_tokens():
     except Exception as e:
         logger.error(f"Token cleanup failed: {str(e)}")
         return {'status': 'error', 'message': str(e)}
+
+
+@shared_task
+def clean_logs_job():
+    """Daily job: remove log lines older than 3 days from all files in /app/logs/"""
+    import re
+    from datetime import datetime as dt, timedelta
+
+    LOG_DIR = '/app/logs'
+    CUTOFF = dt.now() - timedelta(days=3)
+
+    # Ordered list of (regex, strptime-format) pairs covering all log formats
+    PATTERNS = [
+        # Django/trackit: "INFO 2026-05-20 10:30:00,123 ..."
+        (re.compile(r'^\w+\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})'), '%Y-%m-%d %H:%M:%S'),
+        # Celery worker/beat: "[2026-05-20 10:30:00,123: INFO/...]"
+        (re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})'), '%Y-%m-%d %H:%M:%S'),
+        # Gunicorn error: "[2026-05-20 10:30:00 +0000] [pid] ..."
+        (re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) [+-]'), '%Y-%m-%d %H:%M:%S'),
+        # Gunicorn access: "ip - - [20/May/2026:10:30:00 +0000] ..."
+        (re.compile(r'\[(\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}) [+-]'), '%d/%b/%Y:%H:%M:%S'),
+    ]
+
+    def parse_line_date(line):
+        for pattern, fmt in PATTERNS:
+            m = pattern.search(line)
+            if m:
+                try:
+                    return dt.strptime(m.group(1), fmt)
+                except ValueError:
+                    continue
+        return None
+
+    if not os.path.isdir(LOG_DIR):
+        logger.warning(f"clean_logs: directory {LOG_DIR} not found")
+        return {'status': 'skipped', 'reason': 'log dir not found'}
+
+    results = {}
+    for filename in sorted(os.listdir(LOG_DIR)):
+        if not filename.endswith('.log'):
+            continue
+        filepath = os.path.join(LOG_DIR, filename)
+        try:
+            with open(filepath, 'r', errors='replace') as f:
+                lines = f.readlines()
+
+            kept = []
+            keep_flag = True  # keep continuation lines (stack traces etc.) with their parent
+            for line in lines:
+                line_dt = parse_line_date(line)
+                if line_dt is not None:
+                    keep_flag = line_dt >= CUTOFF
+                if keep_flag:
+                    kept.append(line)
+
+            removed = len(lines) - len(kept)
+            if removed > 0:
+                with open(filepath, 'w') as f:
+                    f.writelines(kept)
+
+            results[filename] = {'kept': len(kept), 'removed': removed}
+            logger.info(f"clean_logs: {filename} — removed {removed} old lines, kept {len(kept)}")
+
+        except Exception as e:
+            logger.error(f"clean_logs: failed to process {filename}: {e}")
+            results[filename] = {'error': str(e)}
+
+    logger.info(f"Log cleanup complete: {results}")
+    return {'status': 'success', 'files': results}

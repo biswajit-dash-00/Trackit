@@ -188,6 +188,11 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute=0),  # Run every hour at minute 0
         'options': {'queue': 'trackit'},
     },
+    'clean-logs': {
+        'task': 'scheduler.tasks.clean_logs_job',
+        'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM
+        'options': {'queue': 'trackit'},
+    },
 }
 
 # Email configuration

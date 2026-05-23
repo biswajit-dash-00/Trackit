@@ -52,7 +52,7 @@ class EmailService:
                 subject=subject,
                 body=text_message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=["biswajit.dash@solytics-partners.com"] # for tesing
+                to=[assignee_email]
             )
             email.attach_alternative(html_message, "text/html")
             email.send(fail_silently=False)
@@ -184,18 +184,19 @@ class EmailService:
             """
             
             # Send email with HTML alternative
+            recipients = [e.strip() for e in admin_email.split(',') if e.strip()]
             email = EmailMultiAlternatives(
                 subject=subject,
                 body=text_message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[admin_email]
+                to=recipients
             )
             
             # Attach HTML version
             email.attach_alternative(html_message, "text/html")
             email.send(fail_silently=False)
             
-            logger.info(f"Report email sent to {admin_email}")
+            logger.info(f"Report email sent to {recipients}")
             return True
         
         except Exception as e:
@@ -224,15 +225,16 @@ class EmailService:
             True if email sent successfully, False otherwise
         """
         try:
+            recipients = [e.strip() for e in admin_email.split(',') if e.strip()]
             email = EmailMultiAlternatives(
                 subject=subject_line,
                 body=message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[admin_email]
+                to=recipients
             )
             email.send(fail_silently=False)
             
-            logger.info(f"Admin notification sent to {admin_email}")
+            logger.info(f"Admin notification sent to {recipients}")
             return True
         
         except Exception as e:

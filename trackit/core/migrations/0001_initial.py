@@ -24,17 +24,7 @@ class Migration(migrations.Migration):
                 ),
                 ("name", models.CharField(max_length=255)),
                 ("jira_filter_id", models.CharField(max_length=255)),
-                (
-                    "snapshot_time",
-                    models.TimeField(help_text="Time to take snapshot (HH:MM format)"),
-                ),
-                (
-                    "report_time",
-                    models.TimeField(
-                        help_text="Time to generate and send report (HH:MM format)"
-                    ),
-                ),
-                ("admin_email", models.EmailField(max_length=254)),
+                ("admin_email", models.TextField(help_text="One or more admin emails, comma-separated")),
                 ("active", models.BooleanField(default=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
@@ -91,11 +81,12 @@ class Migration(migrations.Migration):
                 ("ticket_id", models.CharField(max_length=100)),
                 ("title", models.CharField(max_length=500)),
                 ("assignee", models.CharField(max_length=255)),
+                ("age", models.IntegerField(default=1)),
+                ("assignee_email", models.CharField(max_length=255, blank=True, default='')),
                 ("status", models.CharField(max_length=100)),
                 ("priority", models.CharField(default="Medium", max_length=50)),
                 ("updated", models.DateTimeField()),
                 ("snapshot_date", models.DateField()),
-                ("snapshot_json", models.JSONField(default=dict)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 (
                     "filter",

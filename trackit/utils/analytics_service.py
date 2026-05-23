@@ -155,9 +155,11 @@ class AnalyticsService:
                 'today_tickets': {
                     ticket_id: {
                         'assignee': s.assignee,
+                        'assignee_email': s.assignee_email,
                         'priority': s.priority,
                         'status': s.status,
-                        'age': s.snapshot_json.get("age",1),
+                        'yesterday_status': yesterday_dict[ticket_id].status if ticket_id in yesterday_dict else None,
+                        'age': s.age,
                     }
                     for ticket_id, s in today_dict.items()
                 },
@@ -217,6 +219,11 @@ class AnalyticsService:
                 'new_tickets': analytics.analytics_data.get('new_tickets', []),
                 'resolved_tickets': analytics.analytics_data.get('resolved_tickets', []),
             }
+
+            # Fetch once — reused across all report sections
+            today_tickets = analytics.analytics_data.get('today_tickets', {})
+            awaiting_by_assignee = analytics.analytics_data.get('awaiting_by_assignee', {})
+            assignee_email_map = {v['assignee']: v['assignee_email'] for v in today_tickets.values()}
             
             # Build markdown report with emojis and formatting
             report_lines = []
@@ -236,8 +243,8 @@ class AnalyticsService:
             report_lines.append("## 📊 OVERVIEW")
             report_lines.append("")
             report_lines.append(f"- ✅ **Total Tickets:** {total_all_tickets}")
-            report_lines.append(f"- 🟢 **Updated:** {analytics.updated_count}")
-            report_lines.append(f"- 🟡 **Pending:** {pending_count}")
+            report_lines.append(f"- 🟢 **Updates Given:** {analytics.updated_count}")
+            report_lines.append(f"- 🔕 **No Update:** {analytics.missed_count}")
             report_lines.append(f"- 🆕 **New Today:** {analytics.analytics_data.get('new_tickets_count')}")
             report_lines.append(f"- ✔️ **Resolved:** {analytics.resolved_count}")
             report_lines.append(f"- 🎯 **Compliance:** {compliance:.0f}%")
@@ -271,21 +278,22 @@ class AnalyticsService:
                 report_lines.append("")
             
             # Tickets awaiting updates — use pre-computed data from analytics_data (no extra DB call)
-            awaiting_by_assignee = analytics.analytics_data.get('awaiting_by_assignee', {})
-
             if awaiting_by_assignee:
                 report_lines.append("---")
                 report_lines.append("")
                 report_lines.append("## 🚩 AWAITING UPDATES (NO SUBMISSION)")
                 report_lines.append("")
 
+                # Build assignee -> email map once (O(n)) instead of scanning per assignee
                 for assignee in sorted(awaiting_by_assignee.keys()):
                     unique_tickets = sorted(set(awaiting_by_assignee[assignee]))
                     if len(unique_tickets) > 3:
                         tickets_str = ", ".join(unique_tickets[:3]) + " ..."
                     else:
                         tickets_str = ", ".join(unique_tickets)
-                    report_lines.append(f"- 🚩 {assignee}: {tickets_str} ({len(unique_tickets)} tickets)")
+                    email = assignee_email_map.get(assignee, '')
+                    no_email_tag = "⚠️ *no email — reminder not sent*" if not email else ""
+                    report_lines.append(f"- 🚩 {assignee}: {tickets_str} ({len(unique_tickets)} tickets) {no_email_tag}")
                 report_lines.append("")
             
             # Resolved/Moved tickets section — grouped by assignee, truncated at 3
@@ -313,7 +321,6 @@ class AnalyticsService:
             
             # Build detailed ticket table from pre-computed analytics_data (no snapshot re-fetch)
             jira_base_url = getattr(settings, 'JIRA_BASE_URL', '').rstrip('/')
-            today_tickets = analytics.analytics_data.get('today_tickets', {})
             new_ticket_ids = set(comparison_result['new_tickets'])
 
             # ONE batched DB call for all updates today
@@ -347,9 +354,15 @@ class AnalyticsService:
                     ticket_link = f"[{ticket_id}]({jira_base_url}/browse/{ticket_id})"
                     ticket_label = f"{ticket_link} 🆕" if ticket_id in new_ticket_ids else ticket_link
                     age = info.get('age', 1)
+                    today_status = info['status']
+                    yesterday_status = info.get('yesterday_status')
+                    if yesterday_status and yesterday_status != today_status:
+                        status_cell = f"{yesterday_status} → {today_status}"
+                    else:
+                        status_cell = today_status
                     report_lines.append(
                         f"| {ticket_label} | {info['assignee']} | {info['priority']} "
-                        f"| {info['status']} | {eta} | {note} | {blockers} | {age}d |"
+                        f"| {status_cell} | {eta} | {note} | {blockers} | {age}d |"
                     )
             else:
                 report_lines.append("No active tickets in filter.")

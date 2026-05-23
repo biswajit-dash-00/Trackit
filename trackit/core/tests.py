@@ -16,8 +16,6 @@ class FilterModelTest(TestCase):
         self.filter = Filter.objects.create(
             name='Test Filter',
             jira_filter_id='12345',
-            snapshot_time='19:00:00',
-            report_time='21:00:00',
             admin_email='admin@test.com'
         )
     
@@ -40,8 +38,6 @@ class TicketSnapshotTest(TestCase):
         self.filter = Filter.objects.create(
             name='Test Filter',
             jira_filter_id='12345',
-            snapshot_time='19:00:00',
-            report_time='21:00:00',
             admin_email='admin@test.com'
         )
         
@@ -76,8 +72,6 @@ class EmailTokenTest(TestCase):
         self.filter = Filter.objects.create(
             name='Test Filter',
             jira_filter_id='12345',
-            snapshot_time='19:00:00',
-            report_time='21:00:00',
             admin_email='admin@test.com'
         )
         
@@ -160,8 +154,6 @@ class FilterAPITest:
         Filter.objects.create(
             name='Test Filter',
             jira_filter_id='12345',
-            snapshot_time='19:00:00',
-            report_time='21:00:00',
             admin_email='admin@test.com'
         )
         

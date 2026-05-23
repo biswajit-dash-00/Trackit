@@ -74,16 +74,23 @@ class UpdatePageView(View):
                     'priority': t.get('priority', 'Unknown')
                 }
                 for t in current_jira_tickets
-                if t['assignee'] == assignee_email
+                if t.get('assignee_email') == assignee_email
             ]
+
+            # Get display name from first matched ticket (falls back to email)
+            assignee_name = next(
+                (t['assignee'] for t in current_jira_tickets if t.get('assignee_email') == assignee_email),
+                assignee_email
+            )
         
             context = {
                 'filter': filter_instance,
                 'assignee': assignee_email,
-                'ticket_count': len(tickets) if isinstance(tickets, list) else tickets.count(),
-                'tickets': list(tickets),
+                'assignee_name': assignee_name,
+                'ticket_count': len(tickets),
+                'tickets': tickets,
                 'token': token,
-                'is_update_page': True,  # Hide nav buttons on update page
+                'is_update_page': True,
             }
             
             return render(request, 'update_page.html', context)
@@ -222,6 +229,10 @@ class FilterCreateView(LoginRequiredMixin, CreateView):
         logger.info(f"Creating new filter: {form.cleaned_data.get('name')}")
         return super().form_valid(form)
 
+    def form_invalid(self, form):
+        logger.error(f"FilterCreateView form invalid. Errors: {form.errors.as_json()}")
+        return super().form_invalid(form)
+
 
 class FilterEditView(LoginRequiredMixin, UpdateView):
     """Edit an existing filter with beautiful form"""
@@ -346,7 +357,10 @@ class ReportDetailView(LoginRequiredMixin, TemplateView):
             # Convert markdown to HTML for preview
             try:
                 import markdown
-                html_content = markdown.markdown(report.markdown_content)
+                html_content = markdown.markdown(
+                    report.markdown_content,
+                    extensions=['tables', 'nl2br'],
+                )
                 context['html_content'] = html_content
             except:
                 context['html_content'] = report.markdown_content
