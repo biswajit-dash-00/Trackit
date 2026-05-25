@@ -1,5 +1,5 @@
 """Analytics Service for computing metrics and generating insights"""
-import logging
+import logging, os
 import pytz
 from datetime import date
 from django.utils import timezone
@@ -228,10 +228,22 @@ class AnalyticsService:
             
             # Build markdown report with emojis and formatting
             report_lines = []
-            
+
+            # Get or create the report record early so we know its ID for the header link
+            report_obj, _ = DailyReport.objects.get_or_create(
+                filter=filter_instance,
+                report_date=analytics_date,
+                defaults={'markdown_content': ''},
+            )
+            site_url = f"{os.environ.get('UI_DOMAIN','')}".rstrip('/')
+            report_url = f"{site_url}/reports/{report_obj.id}/"
+
             # Header with emojis and markdown
-            report_lines.append(f"📋 **DAILY JIRA REPORT — {filter_instance.name}**")
-            report_lines.append(f"📅 {analytics_date.strftime('%d %B %Y')}")
+            report_lines.append(
+                f"📋 **DAILY JIRA REPORT — {filter_instance.name}** "
+                f"📅 {analytics_date.strftime('%d %B %Y')} "
+                f"([View in TrackIt]({report_url}))"
+            )
             report_lines.append("")
             report_lines.append("---")
             report_lines.append("")
@@ -409,14 +421,9 @@ class AnalyticsService:
             # Rebuild markdown with AI summary + timestamp in correct order
             markdown_report = "\n".join(report_lines)
 
-            # Save report
-            DailyReport.objects.update_or_create(
-                filter=filter_instance,
-                report_date=analytics_date,
-                defaults={
-                    'markdown_content': markdown_report,
-                }
-            )
+            # Save report (use the instance obtained earlier to avoid a second lookup)
+            report_obj.markdown_content = markdown_report
+            report_obj.save(update_fields=['markdown_content'])
 
             return markdown_report
         

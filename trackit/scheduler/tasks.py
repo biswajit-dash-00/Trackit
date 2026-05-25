@@ -217,7 +217,7 @@ def reminder_job():
                         logger.info(f"Created token for {assignee_email}: {token[:10]}...")
                         
                         # Build update link
-                        update_link = f"{os.environ.get('UI_DOMAIN','http://localhost:8000')}/update/{token}"
+                        update_link = f"{os.environ.get('UI_DOMAIN','')}/update/{token}"
                         
                         # Send ONE consolidated email with ALL CURRENT tickets
                         logger.info(f"Sending reminder email to {assignee_name} <{assignee_email}> with {ticket_count} tickets")
