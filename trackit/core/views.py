@@ -284,6 +284,7 @@ class AdminDashboardView(LoginRequiredMixin, TemplateView):
             context['filters'] = filters
             context['latest_reports'] = latest_reports
             context['total_filters'] = filters.count()
+            context['active_filters'] = filters.filter(active=True).count()
             
             # Get statistics
             context['total_snapshots'] = TicketSnapshot.objects.count()
