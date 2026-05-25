@@ -33,7 +33,8 @@ class SnapshotService:
                     yesterday_age_dict[s.ticket_id] = s.age
 
             # Fetch tickets from Jira
-            tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
+            use_qa = 'QA' in filter_instance.name.upper()
+            tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id, use_qa_tester=use_qa)
             
             snapshot_count = 0
             first_ticket_id = None
@@ -54,6 +55,7 @@ class SnapshotService:
                     title=ticket['title'],
                     assignee=ticket['assignee'],
                     assignee_email=ticket.get('assignee_email', ''),
+                    issue_type=ticket.get('issue_type', ''),
                     status=ticket['status'],
                     priority=ticket.get('priority', 'Unknown'),
                     updated=datetime.fromisoformat(ticket['updated'].replace('Z', '+00:00')),

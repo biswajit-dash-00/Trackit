@@ -156,6 +156,7 @@ class AnalyticsService:
                     ticket_id: {
                         'assignee': s.assignee,
                         'assignee_email': s.assignee_email,
+                        'issue_type': s.issue_type,
                         'priority': s.priority,
                         'status': s.status,
                         'yesterday_status': yesterday_dict[ticket_id].status if ticket_id in yesterday_dict else None,
@@ -314,6 +315,9 @@ class AnalyticsService:
                 report_lines.append("")
             
             # Build markdown table with ticket details (including resolved tickets from intermediate snapshots)
+            # Capture report so far (without table) — this is what the AI will read
+            ai_report_lines = list(report_lines)
+
             report_lines.append("---")
             report_lines.append("")
             report_lines.append("## 📝 DETAILED TICKET UPDATES")
@@ -337,8 +341,8 @@ class AnalyticsService:
                     update_lookup[upd['ticket_id']] = upd
 
             if today_tickets:
-                report_lines.append("| Ticket | Assignee | Priority | Status | ETA | Update | Blockers | Pending From |")
-                report_lines.append("|--------|----------|----------|--------|-----|--------|----------|--------------|")
+                report_lines.append("| Ticket | Assignee | Type | Priority | Status | ETA | Update | Blockers | Pending From |")
+                report_lines.append("|--------|----------|------|----------|--------|-----|--------|----------|--------------|")
 
                 # Sort by assignee name then ticket_id (all in-memory)
                 sorted_tickets = sorted(
@@ -360,8 +364,9 @@ class AnalyticsService:
                         status_cell = f"{yesterday_status} → {today_status}"
                     else:
                         status_cell = today_status
+                    issue_type = info.get('issue_type') or '—'
                     report_lines.append(
-                        f"| {ticket_label} | {info['assignee']} | {info['priority']} "
+                        f"| {ticket_label} | {info['assignee']} | {issue_type} | {info['priority']} "
                         f"| {status_cell} | {eta} | {note} | {blockers} | {age}d |"
                     )
             else:
@@ -374,11 +379,11 @@ class AnalyticsService:
             # Convert to markdown (before AI so the full report is sent)
             markdown_report = "\n".join(report_lines)
 
-            # AI summary — inserted above the generated timestamp when configured
+            # AI summary — uses only pre-table content to stay within token limits
             try:
                 from utils.ai_service import AIService
                 import re
-                ai_summary = AIService.summarize(markdown_report)
+                ai_summary = AIService.summarize("\n".join(ai_report_lines))
                 if ai_summary:
                     # Split on every bullet or newline so each item is its own report line.
                     # A blank line after each entry forces a proper paragraph break in all

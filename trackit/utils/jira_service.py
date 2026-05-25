@@ -55,7 +55,9 @@ def retry_on_failure(max_retries: int = 3, backoff_factor: float = 1.0):
 
 class JiraService:
     """Service to interact with Jira API"""
-    
+
+    _qa_tester_field_id: str = None  # class-level cache — discovered once per process
+
     def __init__(self):
         self.base_url = settings.JIRA_BASE_URL
         self.username = settings.JIRA_USERNAME
@@ -94,7 +96,23 @@ class JiraService:
             logger.error(f"Jira API request failed: {str(e)}")
             raise
     
-    def fetch_filter_tickets(self, filter_id: str) -> List[Dict[str, Any]]:
+    def _get_qa_tester_field_id(self) -> str:
+        """Discover the custom field ID for 'QA Tester' from Jira, cached per process."""
+        if JiraService._qa_tester_field_id is not None:
+            return JiraService._qa_tester_field_id
+        try:
+            fields = self._make_request('GET', 'field')
+            for f in fields:
+                if f.get('name', '').strip().lower() == 'qa tester':
+                    JiraService._qa_tester_field_id = f['id']
+                    logger.info(f"Discovered QA Tester field id: {f['id']}")
+                    return f['id']
+            logger.warning("QA Tester custom field not found in Jira fields list")
+        except Exception as e:
+            logger.error(f"Failed to discover QA Tester field: {e}")
+        return None
+
+    def fetch_filter_tickets(self, filter_id: str, use_qa_tester: bool = False) -> List[Dict[str, Any]]:
         """
         Fetch all tickets from a Jira filter using JQL
         
@@ -107,29 +125,36 @@ class JiraService:
         try:
             jql = f"filter={filter_id}"
             all_issues = []
-            start_at = 0
-            max_results = 50
-            
+            max_results = 100
+            next_page_token = None
+            # If QA filter: discover and include the QA Tester custom field
+            qa_field_id = self._get_qa_tester_field_id() if use_qa_tester else None
+            fields_list = ['summary', 'status', 'assignee', 'priority', 'issuetype', 'updated']
+            if qa_field_id:
+                fields_list.append(qa_field_id)
+
             while True:
-                response = self._make_request(
-                    'GET',
-                    'search/jql',
-                    params={
-                        'jql': jql,
-                        'fields': 'key,summary,status,assignee,priority,updated',
-                        'startAt': start_at,
-                        'maxResults': max_results,
-                    }
-                )
-                
+                body = {
+                    'jql': jql,
+                    'fields': fields_list,
+                    'fieldsByKeys': True,
+                    'maxResults': max_results,
+                }
+                if next_page_token:
+                    body['nextPageToken'] = next_page_token
+
+                response = self._make_request('POST', 'search/jql', json=body)
+
                 issues = response.get('issues', [])
                 if not issues:
                     break
-                
+
                 all_issues.extend(issues)
-                start_at += max_results
-                
-                if start_at >= response.get('total', 0):
+
+                next_page_token = response.get('nextPageToken')
+                logger.debug(f"Fetched {len(all_issues)} tickets so far, nextPageToken={bool(next_page_token)}")
+
+                if not next_page_token or len(issues) < max_results:
                     break
 
             # Transform to required format
@@ -139,12 +164,23 @@ class JiraService:
                 assignee_name  = assignee_field.get('displayName', 'Unassigned') if assignee_field else 'Unassigned'
                 assignee_email = (assignee_field.get('emailAddress') or '') if assignee_field else ''
 
+                # For QA filters, override assignee with QA Tester if available
+                if qa_field_id:
+                    qa_field = issue['fields'].get(qa_field_id)
+                    if qa_field:
+                        assignee_name  = qa_field.get('displayName', assignee_name)
+                        assignee_email = (qa_field.get('emailAddress') or '') or assignee_email
+
+                issuetype_field = issue['fields'].get('issuetype')
+                issue_type = issuetype_field.get('name', '') if issuetype_field else ''
+
                 ticket = {
                     'ticket_id': issue['key'],
                     'title': issue['fields'].get('summary', ''),
                     'status': issue['fields']['status']['name'],
                     'assignee': assignee_name,
                     'assignee_email': assignee_email,
+                    'issue_type': issue_type,
                     'priority': issue['fields']['priority']['name'] if issue['fields'].get('priority') else 'Unknown',
                     'updated': issue['fields']['updated'],
                 }

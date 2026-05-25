@@ -31,6 +31,7 @@ class TicketSnapshot(models.Model):
     title = models.CharField(max_length=500)
     assignee = models.CharField(max_length=255)
     status = models.CharField(max_length=100)
+    issue_type = models.CharField(max_length=100, blank=True, default='')
     priority = models.CharField(max_length=50, default='Medium')
     updated = models.DateTimeField()
     snapshot_date = models.DateField()

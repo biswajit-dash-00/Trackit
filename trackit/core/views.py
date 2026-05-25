@@ -63,7 +63,10 @@ class UpdatePageView(View):
             # This ensures only active tickets are shown, not moved ones
             from utils.jira_service import JiraService
             jira_service = JiraService()
-            current_jira_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
+            current_jira_tickets = jira_service.fetch_filter_tickets(
+                filter_instance.jira_filter_id,
+                use_qa_tester='QA' in filter_instance.name.upper(),
+            )
             
             # Filter to only this assignee's tickets
             tickets = [

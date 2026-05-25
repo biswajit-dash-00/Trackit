@@ -133,11 +133,25 @@ function downloadMarkdown(date) {
         'Lowest':   { bg: '#f1f8e9', color: '#558b2f', border: '#c5e1a5' },
     };
 
+    const typeStyles = {
+        'Bug':          { bg: '#fde8e8', color: '#c0001a', border: '#f5b8b8', icon: '🐛' },
+        'Task':         { bg: '#e8f0fe', color: '#1a56b0', border: '#b3c8f5', icon: '✅' },
+        'Story':        { bg: '#e8f5e9', color: '#276221', border: '#a5d6a7', icon: '📖' },
+        'Epic':         { bg: '#f3e8ff', color: '#6b21a8', border: '#d8b4fe', icon: '⚡' },
+        'Sub-task':     { bg: '#f0f0f0', color: '#444444', border: '#cccccc', icon: '↳' },
+        'Improvement':  { bg: '#fff4e0', color: '#b86e00', border: '#ffd98a', icon: '💡' },
+    };
+
     document.querySelectorAll('.markdown-content table td').forEach(function (td) {
         const text = td.textContent.trim();
-        const style = priorityStyles[text];
-        if (style) {
-            td.innerHTML = `<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${style.bg};color:${style.color};border:1px solid ${style.border}">${text}</span>`;
+        const ps = priorityStyles[text];
+        if (ps) {
+            td.innerHTML = `<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${ps.bg};color:${ps.color};border:1px solid ${ps.border}">${text}</span>`;
+            return;
+        }
+        const ts = typeStyles[text];
+        if (ts) {
+            td.innerHTML = `<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${ts.bg};color:${ts.color};border:1px solid ${ts.border}">${ts.icon} ${text}</span>`;
         }
     });
 })();

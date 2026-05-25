@@ -65,7 +65,10 @@ def hourly_snapshot_job():
                 
                 # Fetch current tickets from Jira
                 jira_service = JiraService()
-                current_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
+                current_tickets = jira_service.fetch_filter_tickets(
+                    filter_instance.jira_filter_id,
+                    use_qa_tester='QA' in filter_instance.name.upper(),
+                )
                 
                 # Find NEW tickets from yesterday AND not yet captured today
                 current_ids = set(t['ticket_id'] for t in current_tickets)
@@ -86,6 +89,7 @@ def hourly_snapshot_job():
                             title=ticket['title'],
                             assignee=ticket['assignee'],
                             assignee_email=ticket.get('assignee_email', ''),
+                            issue_type=ticket.get('issue_type', ''),
                             status=ticket['status'],
                             priority=ticket.get('priority', 'Unknown'),
                             updated=datetime.fromisoformat(ticket['updated'].replace('Z', '+00:00')),
@@ -134,7 +138,10 @@ def reminder_job():
                 # This ensures we only remind about tickets still in the filter
                 from utils.jira_service import JiraService
                 jira_service = JiraService()
-                current_tickets = jira_service.fetch_filter_tickets(filter_instance.jira_filter_id)
+                current_tickets = jira_service.fetch_filter_tickets(
+                    filter_instance.jira_filter_id,
+                    use_qa_tester='QA' in filter_instance.name.upper(),
+                )
                 
                 if not current_tickets:
                     logger.warning(f"No current tickets found for filter {filter_instance.name}")
