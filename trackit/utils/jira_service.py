@@ -169,7 +169,7 @@ class JiraService:
                     qa_field = issue['fields'].get(qa_field_id)
                     if qa_field:
                         assignee_name  = qa_field.get('displayName', assignee_name)
-                        assignee_email = (qa_field.get('emailAddress') or '') or assignee_email
+                        assignee_email = qa_field.get('emailAddress') or ''
 
                 issuetype_field = issue['fields'].get('issuetype')
                 issue_type = issuetype_field.get('name', '') if issuetype_field else ''
