@@ -212,7 +212,7 @@ def reminder_job():
                             assignee_email=assignee_email,
                             token=token,
                             filter=filter_instance,
-                            expires_at=timezone.now() + timedelta(hours=15),
+                            expires_at=timezone.now() + timedelta(days=2),
                         )
                         logger.info(f"Created token for {assignee_email}: {token[:10]}...")
                         

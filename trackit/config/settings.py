@@ -185,7 +185,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     'cleanup-tokens': {
         'task': 'scheduler.tasks.cleanup_expired_tokens',
-        'schedule': crontab(minute=0),  # Run every hour at minute 0
+        'schedule': crontab(hour=6, minute=0),  # Daily at 3 AM
         'options': {'queue': 'trackit'},
     },
     'clean-logs': {
